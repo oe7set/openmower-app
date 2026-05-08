@@ -42,3 +42,7 @@ next-env.d.ts
 
 # project-specific
 /config.json
+
+# ai
+.claude
+CLAUDE.md

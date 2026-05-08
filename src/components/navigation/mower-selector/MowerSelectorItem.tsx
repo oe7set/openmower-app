@@ -1,34 +1,56 @@
 import {type MowerConfig} from '@/components/types';
+import {useMowersStore} from '@/stores/mowersStore';
+import {Check as CheckIcon} from '@mui/icons-material';
 import {Box, MenuItem, Typography, useTheme} from '@mui/material';
 
 interface MowerSelectorItemProps {
   mower: MowerConfig;
-  onClick: (mower: MowerConfig) => void;
+  selected: boolean;
+  onClick: () => void;
 }
 
-export default function MowerSelectorItem({mower, onClick}: MowerSelectorItemProps) {
+export default function MowerSelectorItem({mower, selected, onClick}: MowerSelectorItemProps) {
   const theme = useTheme();
+  const status = useMowersStore((s) => s.mqttStatuses[mower.id]);
+
+  const statusColor =
+    status === 'connected'
+      ? theme.palette.success.main
+      : status === 'reconnecting' || status === 'offline'
+      ? theme.palette.warning.main
+      : theme.palette.error.main;
+
   return (
     <MenuItem
-      onClick={() => onClick(mower)}
+      onClick={onClick}
+      selected={selected}
       sx={{
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
         gap: 2,
         p: 2,
-        '&:hover': {
-          backgroundColor: theme.palette.primary.light + '10',
-        },
       }}
     >
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
-        <Box>
-          <Typography variant="body2" fontWeight="500">
-            {mower.name}
+      <Box
+        sx={{
+          width: 10,
+          height: 10,
+          borderRadius: '50%',
+          backgroundColor: statusColor,
+          flexShrink: 0,
+        }}
+      />
+      <Box sx={{flex: 1, minWidth: 0}}>
+        <Typography variant="body2" fontWeight="500" noWrap>
+          {mower.name}
+        </Typography>
+        {mower.description && (
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {mower.description}
           </Typography>
-        </Box>
+        )}
       </Box>
+      {selected && <CheckIcon fontSize="small" color="primary" />}
     </MenuItem>
   );
 }

@@ -6,7 +6,7 @@ import {Roboto} from 'next/font/google';
 import {DialogProvider} from 'react-dialog-async';
 import {ConfigInitializer} from '../components/ConfigInitializer';
 import ThemeRegistry from '../components/ThemeRegistry';
-import Navigation from '../components/navigation/Navigation';
+import AppShell from '../components/navigation/AppShell';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -33,33 +33,18 @@ export default async function RootLayout({
     <html lang="en" className={roboto.variable} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {/* Runs before React hydrates — sets body background immediately so the
-            blank-before-mount period matches the final theme colour */}
+            blank-before-mount period matches the final theme colour. Reads the
+            persisted uiStore ('openmower-ui') first; falls back to prefers-color-scheme. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-theme',d?'dark':'light');document.body.style.background=d?'#121212':'#fafafa';}catch(e){}})()`,
+            __html: `(function(){try{var stored=localStorage.getItem('openmower-ui');var mode='system';if(stored){var s=JSON.parse(stored);if(s&&s.state&&s.state.themeMode)mode=s.state.themeMode;}var d=mode==='dark'||(mode==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.body.style.background=d?'#121212':'#fafafa';}catch(e){}})()`,
           }}
         />
         <ConfigInitializer config={config} />
         <AppRouterCacheProvider>
           <ThemeRegistry>
             <DialogProvider>
-              <Box sx={{display: 'flex', height: '100dvh'}}>
-                <Navigation />
-                <Box
-                  component="main"
-                  sx={{
-                    flex: 1,
-                    pb: {xs: 7, md: 0}, // Account for mobile bottom navigation
-                    margin: 0,
-                    padding: 0,
-                    width: '100%',
-                    overflow: 'auto',
-                    overflowAnchor: 'none',
-                  }}
-                >
-                  {children}
-                </Box>
-              </Box>
+              <AppShell>{children}</AppShell>
             </DialogProvider>
           </ThemeRegistry>
         </AppRouterCacheProvider>

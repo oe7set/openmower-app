@@ -1,6 +1,5 @@
 'use client';
 
-import type {MowerConfig} from '@/components/types';
 import {useMowerConfigs} from '@/stores/configStore';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {Box, Drawer, List, SxProps, Theme, useTheme} from '@mui/material';
@@ -27,20 +26,6 @@ export default function Sidebar({open, onClose}: SidebarProps) {
   const selectedMower = mowerConfigs.find((mower) => mower.id === selectedMowerId);
   const navigationItems = createNavigationItems();
 
-  const handleMowerMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setMowerMenuAnchor(event.currentTarget);
-  };
-
-  const handleMowerMenuClose = () => {
-    setMowerMenuAnchor(null);
-  };
-
-  const handleMowerSelect = (mower: MowerConfig) => {
-    // FIXME
-    // setSelectedMower(mower);
-    handleMowerMenuClose();
-  };
-
   const handleNavigation = (path: string) => {
     router.push(path);
     onClose();
@@ -56,14 +41,11 @@ export default function Sidebar({open, onClose}: SidebarProps) {
 
   return (
     <>
-      {/* Mobile Temporary Drawer */}
       <Drawer
         variant="temporary"
         open={open}
         onClose={onClose}
-        ModalProps={{
-          keepMounted: true, // Better mobile performance
-        }}
+        ModalProps={{keepMounted: true}}
         sx={{
           display: {xs: 'block', md: 'none'},
           '& .MuiDrawer-paper': drawerStyle,
@@ -72,7 +54,6 @@ export default function Sidebar({open, onClose}: SidebarProps) {
         <SidebarContent />
       </Drawer>
 
-      {/* Desktop Permanent Drawer */}
       <Drawer
         variant="permanent"
         sx={{
@@ -90,24 +71,15 @@ export default function Sidebar({open, onClose}: SidebarProps) {
         <SidebarContent />
       </Drawer>
 
-      {/* Desktop Spacer - only show on desktop */}
       <Box sx={{display: {xs: 'none', md: 'block'}, width: drawerWidth, flexShrink: 0}} />
 
-      {/* Mower Selector Menu */}
-      <MowerSelector onMowerSelect={handleMowerSelect} anchorEl={mowerMenuAnchor} onClose={handleMowerMenuClose} />
+      <MowerSelector anchorEl={mowerMenuAnchor} onClose={() => setMowerMenuAnchor(null)} />
     </>
   );
 
   function SidebarContent() {
     return (
-      <Box
-        sx={{
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          userSelect: 'none',
-        }}
-      >
+      <Box sx={{height: '100%', display: 'flex', flexDirection: 'column', userSelect: 'none'}}>
         <SidebarHeader />
         <Box sx={{flex: 1, overflow: 'auto'}}>
           <List sx={{py: 1}}>
@@ -116,8 +88,12 @@ export default function Sidebar({open, onClose}: SidebarProps) {
             ))}
           </List>
         </Box>
-        {mowerConfigs.length > 1 && selectedMower && (
-          <SelectedMower selectedMower={selectedMower} onMowerMenuOpen={handleMowerMenuOpen} />
+        {selectedMower && (
+          <SelectedMower
+            selectedMower={selectedMower}
+            showSwitcher={mowerConfigs.length > 1}
+            onMowerMenuOpen={(e) => setMowerMenuAnchor(e.currentTarget)}
+          />
         )}
       </Box>
     );
