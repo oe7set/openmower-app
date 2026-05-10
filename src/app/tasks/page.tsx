@@ -18,40 +18,23 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   List,
   ListItem,
   ListItemText,
   Switch,
-  TextField,
   Typography,
   useTheme,
 } from '@mui/material';
 import {useCallback, useEffect, useState} from 'react';
-
-// Schedule shape mirrors mower_scheduler/nodes/scheduler.py. The generated
-// rpc.ts uses a heavily mangled type alias for it, so we redeclare a clean
-// local interface and accept the structural-match cost.
-interface Schedule {
-  id?: string;
-  name: string;
-  enabled: boolean;
-  areas: number[];
-  rrule: string;
-  duration_minutes: number;
-  weather?: {skip_if_rain?: boolean};
-  pattern?: {angle_offset?: number; rotate_by_days?: number};
-}
+import ScheduleEditor, {type Schedule} from './ScheduleEditor';
+import {DEFAULT_RRULE_PARTS, partsToRrule} from './rrule';
 
 const EMPTY_SCHEDULE: Schedule = {
   name: '',
   enabled: true,
   areas: [],
-  rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=10;BYMINUTE=0',
+  rrule: partsToRrule(DEFAULT_RRULE_PARTS),
   duration_minutes: 60,
 };
 
@@ -219,87 +202,3 @@ export default function TasksPage() {
   );
 }
 
-// Minimal editor — Phase 7 follow-up adds a real RRULE builder + area picker
-// + weekly calendar view. For now this lets us round-trip schedules end-to-end.
-function ScheduleEditor({
-  initial,
-  onCancel,
-  onSave,
-}: {
-  initial: Schedule;
-  onCancel: () => void;
-  onSave: (s: Schedule) => void;
-}) {
-  const [draft, setDraft] = useState<Schedule>(initial);
-
-  const update = (patch: Partial<Schedule>) => setDraft((d) => ({...d, ...patch}));
-
-  return (
-    <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
-      <DialogTitle>{initial.id ? 'Edit schedule' : 'New schedule'}</DialogTitle>
-      <DialogContent>
-        <Box sx={{display: 'flex', flexDirection: 'column', gap: 2, mt: 1}}>
-          <TextField
-            label="Name"
-            value={draft.name}
-            onChange={(e) => update({name: e.target.value})}
-            fullWidth
-            required
-          />
-          <TextField
-            label="RRULE"
-            helperText="e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=10;BYMINUTE=0"
-            value={draft.rrule}
-            onChange={(e) => update({rrule: e.target.value})}
-            fullWidth
-            sx={{'& input': {fontFamily: 'monospace'}}}
-            required
-          />
-          <TextField
-            label="Duration (minutes)"
-            type="number"
-            value={draft.duration_minutes}
-            onChange={(e) => update({duration_minutes: parseInt(e.target.value, 10) || 0})}
-            inputProps={{min: 1}}
-            required
-          />
-          <TextField
-            label="Areas (comma-separated indices)"
-            value={draft.areas.join(',')}
-            onChange={(e) => {
-              const parts = e.target.value
-                .split(',')
-                .map((p) => p.trim())
-                .filter(Boolean)
-                .map((p) => parseInt(p, 10))
-                .filter((n) => Number.isInteger(n));
-              update({areas: parts});
-            }}
-            fullWidth
-          />
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-            <Switch checked={draft.enabled} onChange={(e) => update({enabled: e.target.checked})} />
-            <Typography variant="body2">Enabled</Typography>
-          </Box>
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-            <Switch
-              checked={draft.weather?.skip_if_rain ?? false}
-              onChange={(e) => update({weather: {skip_if_rain: e.target.checked}})}
-            />
-            <Typography variant="body2">Skip if rain detected</Typography>
-          </Box>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button
-          variant="contained"
-          onClick={() => onSave(draft)}
-          disabled={!draft.name || !draft.rrule || draft.duration_minutes <= 0}
-        >
-          Save
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}

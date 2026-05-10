@@ -3,6 +3,7 @@
 import {useMapboxDraw, useMapContext} from '@/contexts/MapContext';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {fallbackDatum, MapData, type AreaProps} from '@/stores/schemas';
+import {useUiStore} from '@/stores/uiStore';
 import type {AreaFeature} from '@/types/geojson';
 import {generateId, splitPolygonWithLine} from '@/utils/area-utils';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
@@ -60,10 +61,16 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [showAreaList, setShowAreaList] = useState(!isMobile);
-  const [showSatelliteLayer, setShowSatelliteLayer] = useState(false);
-  const [showPlannedPath, setShowPlannedPath] = useState(true);
-  const [showCoveragePath, setShowCoveragePath] = useState(false);
-  const [showMowingTrail, setShowMowingTrail] = useState(false);
+  // Persisted view preferences (theme is in uiStore too — these stay aligned).
+  const mapStyle = useUiStore((s) => s.mapStyle);
+  const setMapStyle = useUiStore((s) => s.setMapStyle);
+  const showPlannedPath = useUiStore((s) => s.showPlannedPath);
+  const setShowPlannedPath = useUiStore((s) => s.setShowPlannedPath);
+  const showCoveragePath = useUiStore((s) => s.showCoveragePath);
+  const setShowCoveragePath = useUiStore((s) => s.setShowCoveragePath);
+  const showMowingTrail = useUiStore((s) => s.showMowingTrail);
+  const setShowMowingTrail = useUiStore((s) => s.setShowMowingTrail);
+  const showSatelliteLayer = mapStyle === 'satellite';
   const [popupAreaId, setPopupAreaId] = useState<string | null>(null);
   const areaSettingsDialog = useDialog(AreaSettingsDialog);
 
@@ -203,7 +210,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             title="Toggle satellite layer"
             icon={GlobeIcon}
             active={showSatelliteLayer}
-            onClick={() => setShowSatelliteLayer(!showSatelliteLayer)}
+            onClick={() => setMapStyle(showSatelliteLayer ? 'white' : 'satellite')}
           />
         )}
         <ControlButton
