@@ -5,16 +5,18 @@ import {outerCardStyles} from '@/lib/cardStyles';
 import type {OpenMowerRpc} from '@/lib/rpc';
 import type {MqttStatus} from '@/stores/mowersStore';
 import {useMowers, useMowersStore} from '@/stores/mowersStore';
-import type {Capabilities, MapData} from '@/stores/schemas';
+import type {Action, Capabilities, MapData, MapOverlay} from '@/stores/schemas';
 import {
   BugReport as BugReportIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Link as LinkIcon,
+  Layers as LayersIcon,
   PlayArrow as PlayArrowIcon,
   Map as MapIcon,
   NetworkCheck as NetworkCheckIcon,
   Refresh as RefreshIcon,
+  TouchApp as TouchAppIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   WifiOff as WifiOffIcon,
@@ -239,6 +241,67 @@ function CapabilitiesSection({capabilities}: {capabilities: Capabilities}) {
   );
 }
 
+function ActionsSection({actions}: {actions: Action[]}) {
+  return (
+    <Box>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
+        <TouchAppIcon fontSize="small" color="action" />
+        <Typography variant="subtitle2" fontWeight={600}>
+          Actions
+        </Typography>
+        <Chip label={actions.length} size="small" />
+      </Box>
+      {actions.length === 0 ? (
+        <Typography variant="body2" color="text.disabled">
+          No actions registered
+        </Typography>
+      ) : (
+        <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
+          {actions.map((a) => (
+            <Chip
+              key={a.action_id}
+              label={a.action_name || a.action_id}
+              size="small"
+              color={a.enabled ? 'success' : 'default'}
+              variant={a.enabled ? 'filled' : 'outlined'}
+              sx={{fontFamily: 'monospace', fontSize: '0.75rem'}}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function OverlaySection({overlay}: {overlay: MapOverlay}) {
+  return (
+    <Box>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
+        <LayersIcon fontSize="small" color="action" />
+        <Typography variant="subtitle2" fontWeight={600}>
+          Map overlay
+        </Typography>
+        <Chip label={`${overlay.polygons.length} polygon${overlay.polygons.length === 1 ? '' : 's'}`} size="small" />
+      </Box>
+      {overlay.polygons.length === 0 ? (
+        <Typography variant="body2" color="text.disabled">
+          No transient overlays published
+        </Typography>
+      ) : (
+        <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.5}}>
+          {overlay.polygons.map((p, i) => (
+            <SplitBadge
+              key={i}
+              label={`#${i}`}
+              value={`${p.poly.length}pt ${p.is_closed ? 'closed' : 'open'} c${p.color}`}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 function MapSection({map}: {map: MapData}) {
   const hasMap = map.areas.length > 0 || map.docking_stations.length > 0;
   const countsByType = map.areas.reduce<Record<string, number>>((acc, a) => {
@@ -355,6 +418,14 @@ export default function DebugPage() {
                     <Divider />
 
                     <MapSection map={mower.map} />
+
+                    <Divider />
+
+                    <ActionsSection actions={mower.actions} />
+
+                    <Divider />
+
+                    <OverlaySection overlay={mower.mapOverlay} />
                   </Box>
                 </CardContent>
               </Card>

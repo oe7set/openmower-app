@@ -8,20 +8,34 @@ import {create, useStore} from 'zustand';
 import {immer} from 'zustand/middleware/immer';
 import {useConfigStore} from './configStore';
 import {
+  Action,
+  actionsSchema,
   Area,
   AreaType,
   capabilitiesSchema,
+  coveragePathSchema,
   LegacyArea,
   LegacyMapData,
   legacyMapSchema,
   mapDefaults,
+  mapOverlayDefaults,
+  mapOverlaySchema,
   mapSchema,
+  mowingTrailSchema,
+  plannedPathSchema,
+  sensorInfosSchema,
   stateDefaults,
   stateSchema,
   type Capabilities,
+  type CoveragePath,
   type MapData,
+  type MapOverlay,
+  type MowingTrail,
+  type PlannedPath,
+  type SensorInfo,
   type State,
 } from './schemas';
+import {pushSensorValue} from './sensorsStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
 
@@ -38,6 +52,12 @@ class Mower {
   capabilities: Capabilities = {};
   state: State = stateDefaults;
   map: MapData = mapDefaults;
+  mapOverlay: MapOverlay = mapOverlayDefaults;
+  actions: Action[] = [];
+  sensorInfos: SensorInfo[] = [];
+  plannedPath: PlannedPath = [];
+  coveragePath: CoveragePath = [];
+  mowingTrail: MowingTrail = [];
 
   constructor(config: MowerConfig, mqttClient: MqttClient) {
     this.id = config.id;
@@ -57,6 +77,17 @@ class Mower {
   publishTeleop(vx: number, vz: number) {
     const payload = BSON.serialize({vx, vz});
     this.mqttClient.publish(this.mqttPrefix + 'teleop', Buffer.from(payload.buffer));
+  }
+
+  // Sends an action_id to the mower. The ROS xbot_monitoring node forwards it
+  // to the action publisher. Action IDs come from the actions/json topic and
+  // are formatted "<node_prefix>/<action_id>" (e.g. "mower_logic/start_mowing").
+  publishAction(actionId: string) {
+    this.mqttClient.publish(this.mqttPrefix + 'action', actionId);
+  }
+
+  isActionEnabled(actionId: string): boolean {
+    return this.actions.some((a) => a.action_id === actionId && a.enabled);
   }
 }
 
@@ -126,6 +157,13 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'capabilities/json');
             client.subscribe(clientMower.prefix + 'robot_state/json');
             client.subscribe(clientMower.prefix + 'map/json');
+            client.subscribe(clientMower.prefix + 'map_overlay/json');
+            client.subscribe(clientMower.prefix + 'actions/json');
+            client.subscribe(clientMower.prefix + 'sensor_infos/json');
+            client.subscribe(clientMower.prefix + 'sensors/+/data');
+            client.subscribe(clientMower.prefix + 'planned_path/json');
+            client.subscribe(clientMower.prefix + 'coverage_path/json');
+            client.subscribe(clientMower.prefix + 'mowing_trail/json');
             client.subscribe(clientMower.prefix + 'rpc/response');
           }
         });
@@ -151,6 +189,38 @@ export const useMowersStore = create<MowersStore>()(
               set((state) => {
                 state.mowers[idx].capabilities = capabilitiesSchema.parse(JSON.parse(payload.toString()));
               });
+            } else if (partialTopic === 'actions/json') {
+              set((state) => {
+                state.mowers[idx].actions = actionsSchema.parse(JSON.parse(payload.toString()));
+              });
+            } else if (partialTopic === 'map_overlay/json') {
+              set((state) => {
+                state.mowers[idx].mapOverlay = mapOverlaySchema.parse(JSON.parse(payload.toString()));
+              });
+            } else if (partialTopic === 'sensor_infos/json') {
+              set((state) => {
+                state.mowers[idx].sensorInfos = sensorInfosSchema.parse(JSON.parse(payload.toString()));
+              });
+            } else if (partialTopic === 'planned_path/json') {
+              set((state) => {
+                state.mowers[idx].plannedPath = plannedPathSchema.parse(JSON.parse(payload.toString()));
+              });
+            } else if (partialTopic === 'coverage_path/json') {
+              set((state) => {
+                state.mowers[idx].coveragePath = coveragePathSchema.parse(JSON.parse(payload.toString()));
+              });
+            } else if (partialTopic === 'mowing_trail/json') {
+              set((state) => {
+                state.mowers[idx].mowingTrail = mowingTrailSchema.parse(JSON.parse(payload.toString()));
+              });
+            } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
+              // sensors/<id>/data is plaintext: a stringified number for DOUBLE
+              // sensors, a free string for STRING sensors. The high-frequency
+              // values land in a separate store so they don't trigger
+              // re-renders for unrelated UI.
+              const sensorId = partialTopic.slice('sensors/'.length, -'/data'.length);
+              const mowerId = mowers[idx].id;
+              pushSensorValue(mowerId, sensorId, payload.toString());
             }
           }
         });

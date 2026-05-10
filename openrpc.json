@@ -58,6 +58,24 @@
       }
     },
     {
+      "name": "map.start_in_area",
+      "summary": "Trigger mowing to start in a specific working area.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "area_index",
+          "description": "Zero-based index into the type=='mow' filtered area list (matches robot_state.current_area).",
+          "required": true,
+          "schema": {"type": "integer", "minimum": 0}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "No result is returned if successful.",
+        "schema": {"type": "null"}
+      }
+    },
+    {
       "name": "meta.rpc.ping",
       "summary": "Ping the meta server.",
       "params": [],
@@ -100,6 +118,144 @@
           "description": "Keys are relative file paths, values are YAML file contents as strings"
         }
       }
+    },
+    {
+      "name": "meta.config.get",
+      "summary": "Read the live mower_config.sh as a flat key/value object.",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "Object whose keys are environment-variable names and values are their current string values.",
+        "schema": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        }
+      }
+    },
+    {
+      "name": "meta.config.set",
+      "summary": "Apply a set of changes to mower_config.sh atomically.",
+      "params": [
+        {
+          "name": "changes",
+          "description": "Object with the keys to write. Existing keys are updated in place; new keys are appended.",
+          "required": true,
+          "schema": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Number of changes applied.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "updated": {"type": "integer"}
+          }
+        }
+      }
+    },
+    {
+      "name": "params.set",
+      "summary": "Set a single ROS parameter, optionally triggering dynamic_reconfigure on the owning node.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "name",
+          "description": "Fully-qualified ROS parameter name, e.g. /mower_logic/foo.",
+          "required": true,
+          "schema": {"type": "string"}
+        },
+        {
+          "name": "value",
+          "description": "New value (boolean, integer, number or string).",
+          "required": true,
+          "schema": {}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "No result is returned if successful.",
+        "schema": {"type": "null"}
+      }
+    },
+    {
+      "name": "schedule.list",
+      "summary": "List all configured mowing schedules.",
+      "params": [],
+      "result": {
+        "name": "schedules",
+        "description": "Array of schedule entries.",
+        "schema": {
+          "type": "array",
+          "items": {"$ref": "#/components/schemas/Schedule"}
+        }
+      }
+    },
+    {
+      "name": "schedule.upsert",
+      "summary": "Insert or update a schedule. The ID is generated server-side when missing.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "schedule",
+          "description": "Schedule definition.",
+          "required": true,
+          "schema": {"$ref": "#/components/schemas/Schedule"}
+        }
+      ],
+      "result": {
+        "name": "schedule",
+        "description": "The persisted schedule (with the assigned id).",
+        "schema": {"$ref": "#/components/schemas/Schedule"}
+      }
+    },
+    {
+      "name": "schedule.delete",
+      "summary": "Remove a schedule by id.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "description": "Schedule id to delete.",
+          "required": true,
+          "schema": {"type": "string"}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "No result is returned if successful.",
+        "schema": {"type": "null"}
+      }
     }
-  ]
+  ],
+  "components": {
+    "schemas": {
+      "Schedule": {
+        "type": "object",
+        "required": ["name", "enabled", "areas", "rrule", "duration_minutes"],
+        "properties": {
+          "id": {"type": "string", "description": "Generated server-side when omitted."},
+          "name": {"type": "string"},
+          "enabled": {"type": "boolean"},
+          "areas": {"type": "array", "items": {"type": "integer"}},
+          "rrule": {"type": "string", "description": "iCal RRULE string."},
+          "duration_minutes": {"type": "integer", "minimum": 1},
+          "weather": {
+            "type": "object",
+            "properties": {"skip_if_rain": {"type": "boolean"}}
+          },
+          "pattern": {
+            "type": "object",
+            "properties": {
+              "angle_offset": {"type": "number"},
+              "rotate_by_days": {"type": "integer"}
+            }
+          }
+        }
+      }
+    }
+  }
 }

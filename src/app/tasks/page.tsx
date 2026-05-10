@@ -1,469 +1,305 @@
 'use client';
 
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
-import {innerCardStyles, outerCardStyles} from '@/lib/cardStyles';
-
+import {useToast} from '@/hooks/useToast';
+import {outerCardStyles} from '@/lib/cardStyles';
+import {useSelectedMower} from '@/stores/mowersStore';
 import {
   Add as AddIcon,
-  Assignment as AssignmentIcon,
   CheckCircle as CheckIcon,
   Delete as DeleteIcon,
-  DragIndicator as DragIcon,
-  Edit as EditIcon,
-  PlayArrow as PlayIcon,
   Schedule as ScheduleIcon,
-  TrendingUp as TrendingIcon,
 } from '@mui/icons-material';
 import {
-  Avatar,
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
-  Divider,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   List,
+  ListItem,
+  ListItemText,
+  Switch,
+  TextField,
   Typography,
-  useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 
-// Mock data - in real app this would come from API
-const mockTasks = [
-  {
-    id: '1',
-    name: 'Mow Back Garden',
-    area: 'Back Garden',
-    priority: 'high',
-    status: 'active',
-    estimatedTime: '45 min',
-    pattern: '90° rotation',
-    nextRun: 'Today, 2:00 PM',
-    lastRun: 'Yesterday, 3:30 PM',
-    efficiency: 92,
-  },
-  {
-    id: '2',
-    name: 'Mow Front Lawn',
-    area: 'Front Lawn',
-    priority: 'medium',
-    status: 'pending',
-    estimatedTime: '30 min',
-    pattern: 'Standard',
-    nextRun: 'Tomorrow, 9:00 AM',
-    lastRun: '2 days ago',
-    efficiency: 88,
-  },
-  {
-    id: '3',
-    name: 'Mow Back Garden (45° rotation)',
-    area: 'Back Garden',
-    priority: 'low',
-    status: 'scheduled',
-    estimatedTime: '45 min',
-    pattern: '45° rotation',
-    nextRun: 'Friday, 10:00 AM',
-    lastRun: 'Never',
-    efficiency: 0,
-  },
-];
+// Schedule shape mirrors mower_scheduler/nodes/scheduler.py. The generated
+// rpc.ts uses a heavily mangled type alias for it, so we redeclare a clean
+// local interface and accept the structural-match cost.
+interface Schedule {
+  id?: string;
+  name: string;
+  enabled: boolean;
+  areas: number[];
+  rrule: string;
+  duration_minutes: number;
+  weather?: {skip_if_rain?: boolean};
+  pattern?: {angle_offset?: number; rotate_by_days?: number};
+}
+
+const EMPTY_SCHEDULE: Schedule = {
+  name: '',
+  enabled: true,
+  areas: [],
+  rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=10;BYMINUTE=0',
+  duration_minutes: 60,
+};
 
 export default function TasksPage() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const toast = useToast();
+  const rpc = useSelectedMower((s) => s?.rpc);
 
-  const handleTaskAction = (action: string, taskId: string) => {
-    console.log(`${action} for task ${taskId}`);
-  };
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [editing, setEditing] = useState<Schedule | null>(null);
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'error';
-      case 'medium':
-        return 'warning';
-      case 'low':
-        return 'info';
-      default:
-        return 'default';
+  const refresh = useCallback(async () => {
+    if (!rpc) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // The schedule.list method is added by the mower_scheduler ROS node;
+      // backends without it will return ERROR_METHOD_NOT_FOUND, which we
+      // surface as an empty list with an informative banner.
+      const result = (await rpc.schedule.list()) as unknown as Schedule[];
+      setSchedules(result ?? []);
+    } catch (e) {
+      setError((e as Error).message);
+      setSchedules([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [rpc]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const handleSave = async (schedule: Schedule) => {
+    if (!rpc) return;
+    try {
+      await rpc.schedule.upsert({schedule: schedule as never});
+      toast.success(`Saved ${schedule.name}`);
+      setEditing(null);
+      refresh();
+    } catch (e) {
+      toast.error(`Save failed: ${(e as Error).message}`);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'pending':
-        return 'warning';
-      case 'scheduled':
-        return 'info';
-      case 'completed':
-        return 'default';
-      default:
-        return 'default';
+  const handleToggle = async (schedule: Schedule) => {
+    if (!rpc || !schedule.id) return;
+    try {
+      await rpc.schedule.upsert({schedule: {...schedule, enabled: !schedule.enabled} as never});
+      refresh();
+    } catch (e) {
+      toast.error(`Toggle failed: ${(e as Error).message}`);
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'Running';
-      case 'pending':
-        return 'Pending';
-      case 'scheduled':
-        return 'Scheduled';
-      case 'completed':
-        return 'Completed';
-      default:
-        return 'Unknown';
+  const handleDelete = async (schedule: Schedule) => {
+    if (!rpc || !schedule.id) return;
+    if (!window.confirm(`Delete schedule "${schedule.name}"?`)) return;
+    try {
+      await rpc.schedule.delete({id: schedule.id});
+      toast.success('Deleted');
+      refresh();
+    } catch (e) {
+      toast.error(`Delete failed: ${(e as Error).message}`);
     }
   };
+
+  const enabledCount = schedules.filter((s) => s.enabled).length;
 
   return (
     <Page>
-      <PageHeader title="Task Management" subtitle="Schedule and manage mowing sequences with precision">
-        <HeaderStat icon={<AssignmentIcon />} value={mockTasks.length} label="Total Tasks" />
-        <HeaderStat
-          icon={<PlayIcon />}
-          value={mockTasks.filter((t) => t.status === 'active').length}
-          label="Active Tasks"
-        />
-        <HeaderStat
-          icon={<TrendingIcon />}
-          value={`${Math.round(mockTasks.reduce((acc, t) => acc + t.efficiency, 0) / mockTasks.length)}%`}
-          label="Average Efficiency"
-        />
+      <PageHeader title="Tasks" subtitle="Schedule recurring mowing jobs">
+        <HeaderStat icon={<ScheduleIcon />} value={schedules.length} label="Total schedules" />
+        <HeaderStat icon={<CheckIcon />} value={enabledCount} label="Enabled" />
       </PageHeader>
 
       <PageContent>
-        <Box sx={{display: 'flex', gap: 4, flexDirection: isMobile ? 'column' : 'row'}}>
-          {/* Task List */}
-          <Box sx={{flex: 1}}>
-            <Card sx={outerCardStyles(theme)}>
-              <CardContent>
-                {/* Task List Header */}
-                <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4}}>
-                  <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
-                    <Avatar sx={{bgcolor: theme.palette.warning.main, width: 48, height: 48}}>
-                      <AssignmentIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h5" component="h2" fontWeight="600">
-                        Mowing Tasks
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Manage your automated mowing schedule
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{display: 'flex', gap: 1}}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<AddIcon />}
-                      sx={{borderRadius: 2, fontWeight: 600}}
-                    >
-                      Add Task
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      startIcon={<ScheduleIcon />}
-                      sx={{borderRadius: 2, fontWeight: 600}}
-                    >
-                      Schedule
-                    </Button>
-                  </Box>
-                </Box>
+        {error && (
+          <Alert severity="warning" sx={{mb: 2}}>
+            Could not load schedules: {error}. Make sure the <code>mower_scheduler</code> node is running on the mower.
+          </Alert>
+        )}
 
-                <List sx={{p: 0}}>
-                  {mockTasks.map((task) => (
-                    <Card
-                      key={task.id}
-                      sx={{
-                        ...innerCardStyles,
-                        mb: 3,
-                        borderColor: selectedTask === task.id ? theme.palette.primary.main : undefined,
-                        backgroundColor: selectedTask === task.id ? theme.palette.primary.light + '10' : undefined,
-                        '&:hover': {
-                          ...innerCardStyles['&:hover'],
-                          borderColor: theme.palette.primary.main,
-                          backgroundColor: theme.palette.primary.light + '05',
-                        },
-                      }}
-                      onClick={() => setSelectedTask(task.id)}
-                    >
-                      <CardContent sx={{py: 3, '&:last-child': {pb: 3}}}>
-                        <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 3}}>
-                          <DragIcon sx={{mt: 1, color: theme.palette.grey[400]}} />
+        <Card sx={outerCardStyles(theme)}>
+          <CardContent>
+            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5}}>
+              <Typography variant="h6" fontWeight="600">
+                Schedules
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setEditing({...EMPTY_SCHEDULE})}
+                disabled={!rpc}
+              >
+                New
+              </Button>
+            </Box>
 
-                          <Box sx={{flex: 1}}>
-                            {/* Task Header */}
-                            <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 2}}>
-                              <Typography variant="h6" fontWeight="600">
-                                {task.name}
-                              </Typography>
-                              <Chip
-                                label={task.priority}
-                                color={getPriorityColor(task.priority)}
-                                size="small"
-                                sx={{fontWeight: 500}}
-                              />
-                              <Chip
-                                label={getStatusLabel(task.status)}
-                                color={getStatusColor(task.status)}
-                                size="small"
-                                sx={{fontWeight: 500}}
-                              />
-                            </Box>
-
-                            {/* Task Details */}
-                            <Box
-                              sx={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                                gap: 2,
-                                mb: 2,
-                              }}
-                            >
-                              <Box>
-                                <Typography variant="body2" color="text.secondary" gutterBottom>
-                                  Area
-                                </Typography>
-                                <Typography variant="body1" fontWeight="500">
-                                  {task.area}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="body2" color="text.secondary" gutterBottom>
-                                  Pattern
-                                </Typography>
-                                <Typography variant="body1" fontWeight="500">
-                                  {task.pattern}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="body2" color="text.secondary" gutterBottom>
-                                  Est. Time
-                                </Typography>
-                                <Typography variant="body1" fontWeight="500">
-                                  {task.estimatedTime}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="body2" color="text.secondary" gutterBottom>
-                                  Efficiency
-                                </Typography>
-                                <Typography
-                                  variant="body1"
-                                  fontWeight="500"
-                                  color={task.efficiency > 80 ? 'success.main' : 'warning.main'}
-                                >
-                                  {task.efficiency}%
-                                </Typography>
-                              </Box>
-                            </Box>
-
-                            {/* Schedule Info */}
-                            <Box sx={{display: 'flex', gap: 3, flexWrap: 'wrap'}}>
-                              <Box>
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Next Run
-                                </Typography>
-                                <Typography variant="body2" fontWeight="500">
-                                  {task.nextRun}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Last Run
-                                </Typography>
-                                <Typography variant="body2" fontWeight="500">
-                                  {task.lastRun}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-
-                          {/* Action Buttons */}
-                          <Box sx={{display: 'flex', gap: 1, alignItems: 'center'}}>
-                            {task.status === 'active' ? (
-                              <IconButton
-                                color="warning"
-                                sx={{
-                                  bgcolor: theme.palette.warning.light + '20',
-                                  '&:hover': {bgcolor: theme.palette.warning.light + '30'},
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTaskAction('pause', task.id);
-                                }}
-                              >
-                                <PlayIcon />
-                              </IconButton>
-                            ) : (
-                              <IconButton
-                                color="primary"
-                                sx={{
-                                  bgcolor: theme.palette.primary.light + '20',
-                                  '&:hover': {bgcolor: theme.palette.primary.light + '30'},
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTaskAction('start', task.id);
-                                }}
-                              >
-                                <PlayIcon />
-                              </IconButton>
-                            )}
-
-                            <IconButton
-                              color="primary"
-                              sx={{
-                                bgcolor: theme.palette.primary.light + '20',
-                                '&:hover': {bgcolor: theme.palette.primary.light + '30'},
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleTaskAction('edit', task.id);
-                              }}
-                            >
-                              <EditIcon />
-                            </IconButton>
-
-                            <IconButton
-                              color="error"
-                              sx={{
-                                bgcolor: theme.palette.error.light + '20',
-                                '&:hover': {bgcolor: theme.palette.error.light + '30'},
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleTaskAction('delete', task.id);
-                              }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
+            {loading ? (
+              <Box sx={{display: 'flex', justifyContent: 'center', py: 4}}>
+                <CircularProgress />
+              </Box>
+            ) : schedules.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{py: 2}}>
+                No schedules yet. Click <strong>New</strong> to create one.
+              </Typography>
+            ) : (
+              <List disablePadding>
+                {schedules.map((s) => (
+                  <ListItem
+                    key={s.id ?? s.name}
+                    sx={{
+                      borderRadius: 2,
+                      mb: 1,
+                      backgroundColor: theme.palette.action.hover,
+                    }}
+                    secondaryAction={
+                      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                        <Switch checked={s.enabled} onChange={() => handleToggle(s)} />
+                        <Button size="small" onClick={() => setEditing(s)}>
+                          Edit
+                        </Button>
+                        <IconButton color="error" onClick={() => handleDelete(s)} aria-label="Delete">
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+                    }
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                          <Typography variant="body1" fontWeight="600">
+                            {s.name || '(unnamed)'}
+                          </Typography>
+                          {s.areas.length > 0 && (
+                            <Chip size="small" label={`${s.areas.length} area${s.areas.length === 1 ? '' : 's'}`} />
+                          )}
                         </Box>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </List>
-              </CardContent>
-            </Card>
-          </Box>
+                      }
+                      secondary={
+                        <Typography variant="caption" sx={{fontFamily: 'monospace'}}>
+                          {s.rrule} · {s.duration_minutes} min
+                        </Typography>
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* Task Details Sidebar */}
-          <Box sx={{width: isMobile ? '100%' : '400px'}}>
-            <Card sx={outerCardStyles(theme)}>
-              <CardContent>
-                <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 3}}>
-                  <Avatar sx={{bgcolor: theme.palette.info.main, width: 40, height: 40}}>
-                    <CheckIcon />
-                  </Avatar>
-                  <Typography variant="h5" component="h3" fontWeight="600">
-                    Task Details
-                  </Typography>
-                </Box>
-
-                {selectedTask ? (
-                  <Box>
-                    {(() => {
-                      const task = mockTasks.find((t) => t.id === selectedTask);
-                      if (!task) return null;
-
-                      return (
-                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 3}}>
-                          <Box>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                              Task Name
-                            </Typography>
-                            <Typography variant="h6" fontWeight="600">
-                              {task.name}
-                            </Typography>
-                          </Box>
-
-                          <Box>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                              Area
-                            </Typography>
-                            <Typography variant="body1">{task.area}</Typography>
-                          </Box>
-
-                          <Box>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                              Pattern
-                            </Typography>
-                            <Typography variant="body1">{task.pattern}</Typography>
-                          </Box>
-
-                          <Box>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                              Estimated Time
-                            </Typography>
-                            <Typography variant="body1">{task.estimatedTime}</Typography>
-                          </Box>
-
-                          <Box>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                              Next Run
-                            </Typography>
-                            <Typography variant="body1">{task.nextRun}</Typography>
-                          </Box>
-
-                          <Box>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                              Last Run
-                            </Typography>
-                            <Typography variant="body1">{task.lastRun}</Typography>
-                          </Box>
-
-                          <Divider sx={{my: 2}} />
-
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            fullWidth
-                            size="large"
-                            startIcon={<PlayIcon />}
-                            onClick={() => handleTaskAction('start', task.id)}
-                            sx={{
-                              py: 1.5,
-                              borderRadius: 3,
-                              fontWeight: 600,
-                              background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-                              boxShadow: '0 4px 15px rgba(76, 175, 80, 0.3)',
-                              '&:hover': {
-                                boxShadow: '0 6px 20px rgba(76, 175, 80, 0.4)',
-                              },
-                            }}
-                          >
-                            Start Task
-                          </Button>
-                        </Box>
-                      );
-                    })()}
-                  </Box>
-                ) : (
-                  <Box sx={{textAlign: 'center', py: 6}}>
-                    <AssignmentIcon sx={{fontSize: 64, color: theme.palette.grey[400], mb: 2}} />
-                    <Typography variant="body1" color="text.secondary" gutterBottom>
-                      Select a task to view details
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Choose any task from the list to see comprehensive information
-                    </Typography>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          </Box>
-        </Box>
+        {editing !== null && (
+          <ScheduleEditor
+            initial={editing}
+            onCancel={() => setEditing(null)}
+            onSave={handleSave}
+          />
+        )}
       </PageContent>
     </Page>
+  );
+}
+
+// Minimal editor — Phase 7 follow-up adds a real RRULE builder + area picker
+// + weekly calendar view. For now this lets us round-trip schedules end-to-end.
+function ScheduleEditor({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial: Schedule;
+  onCancel: () => void;
+  onSave: (s: Schedule) => void;
+}) {
+  const [draft, setDraft] = useState<Schedule>(initial);
+
+  const update = (patch: Partial<Schedule>) => setDraft((d) => ({...d, ...patch}));
+
+  return (
+    <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
+      <DialogTitle>{initial.id ? 'Edit schedule' : 'New schedule'}</DialogTitle>
+      <DialogContent>
+        <Box sx={{display: 'flex', flexDirection: 'column', gap: 2, mt: 1}}>
+          <TextField
+            label="Name"
+            value={draft.name}
+            onChange={(e) => update({name: e.target.value})}
+            fullWidth
+            required
+          />
+          <TextField
+            label="RRULE"
+            helperText="e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=10;BYMINUTE=0"
+            value={draft.rrule}
+            onChange={(e) => update({rrule: e.target.value})}
+            fullWidth
+            sx={{'& input': {fontFamily: 'monospace'}}}
+            required
+          />
+          <TextField
+            label="Duration (minutes)"
+            type="number"
+            value={draft.duration_minutes}
+            onChange={(e) => update({duration_minutes: parseInt(e.target.value, 10) || 0})}
+            inputProps={{min: 1}}
+            required
+          />
+          <TextField
+            label="Areas (comma-separated indices)"
+            value={draft.areas.join(',')}
+            onChange={(e) => {
+              const parts = e.target.value
+                .split(',')
+                .map((p) => p.trim())
+                .filter(Boolean)
+                .map((p) => parseInt(p, 10))
+                .filter((n) => Number.isInteger(n));
+              update({areas: parts});
+            }}
+            fullWidth
+          />
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+            <Switch checked={draft.enabled} onChange={(e) => update({enabled: e.target.checked})} />
+            <Typography variant="body2">Enabled</Typography>
+          </Box>
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+            <Switch
+              checked={draft.weather?.skip_if_rain ?? false}
+              onChange={(e) => update({weather: {skip_if_rain: e.target.checked}})}
+            />
+            <Typography variant="body2">Skip if rain detected</Typography>
+          </Box>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={() => onSave(draft)}
+          disabled={!draft.name || !draft.rrule || draft.duration_minutes <= 0}
+        >
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

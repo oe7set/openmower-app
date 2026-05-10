@@ -9,6 +9,18 @@ export const capabilitiesSchema = z.record(z.string(), z.int().gte(1));
 export type Capabilities = z.infer<typeof capabilitiesSchema>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Actions
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const actionSchema = z.object({
+  action_id: z.string(),
+  action_name: z.string(),
+  enabled: z.boolean().default(true),
+});
+export const actionsSchema = z.array(actionSchema);
+export type Action = z.infer<typeof actionSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // State
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -89,6 +101,76 @@ export const mapSchema = z.object({
 });
 
 export type MapData = z.infer<typeof mapSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Path overlays (planned, coverage, mowing trail)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// All three topics use the same simple {x, y} point shape (in mower-relative
+// metres, like Area.outline). The trail is a single long polyline; coverage
+// is many short polylines; planned_path is one polyline.
+export const plannedPathSchema = z.array(pointSchema).default([]);
+export type PlannedPath = z.infer<typeof plannedPathSchema>;
+
+const coverageStripeSchema = z.object({
+  points: z.array(pointSchema),
+});
+export const coveragePathSchema = z.array(coverageStripeSchema).default([]);
+export type CoveragePath = z.infer<typeof coveragePathSchema>;
+
+export const mowingTrailSchema = z.array(pointSchema).default([]);
+export type MowingTrail = z.infer<typeof mowingTrailSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sensors
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Mirrors xbot_monitoring's publish_sensor_metadata() shape. The C++ code
+// either emits a known string or "UNKNOWN" — we accept any string here so
+// the UI can fall back gracefully on backends that grow new variants.
+const sensorValueTypeSchema = z.string();
+const sensorValueDescriptionSchema = z.string();
+
+export const sensorInfoSchema = z.object({
+  sensor_id: z.string(),
+  sensor_name: z.string().default(''),
+  value_type: sensorValueTypeSchema.default('UNKNOWN'),
+  value_description: sensorValueDescriptionSchema.default('UNKNOWN'),
+  unit: z.string().default(''),
+  has_min_max: z.boolean().default(false),
+  min_value: z.number().default(0),
+  max_value: z.number().default(0),
+  has_critical_low: z.boolean().default(false),
+  lower_critical_value: z.number().default(0),
+  has_critical_high: z.boolean().default(false),
+  upper_critical_value: z.number().default(0),
+});
+export const sensorInfosSchema = z.array(sensorInfoSchema);
+export type SensorInfo = z.infer<typeof sensorInfoSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Map overlay (transient visualisations like the recording trail)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// xbot_msgs/MapOverlayPolygon.msg — color is one of red|green|blue (0|1|2),
+// is_closed=1 means the polygon is drawn as a closed ring.
+export const overlayColorSchema = z.union([z.literal(0), z.literal(1), z.literal(2)]);
+export type OverlayColor = z.infer<typeof overlayColorSchema>;
+
+const overlayPolygonSchema = z.object({
+  poly: z.array(pointSchema),
+  is_closed: z.union([z.literal(0), z.literal(1)]).transform((v) => v === 1),
+  line_width: z.number(),
+  color: overlayColorSchema,
+});
+export type OverlayPolygon = z.infer<typeof overlayPolygonSchema>;
+
+export const mapOverlaySchema = z.object({
+  polygons: z.array(overlayPolygonSchema).default([]),
+});
+export type MapOverlay = z.infer<typeof mapOverlaySchema>;
+
+export const mapOverlayDefaults: MapOverlay = {polygons: []};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Legacy map

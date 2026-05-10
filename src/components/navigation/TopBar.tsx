@@ -1,7 +1,7 @@
 'use client';
 
 import {useToast} from '@/hooks/useToast';
-import {useSelectedMower} from '@/stores/mowersStore';
+import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore, type ThemeMode} from '@/stores/uiStore';
 import {Brightness4, DarkMode, LightMode, Menu as MenuIcon, SettingsBrightness, Warning} from '@mui/icons-material';
 import {
@@ -37,7 +37,6 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
   const themeMode = useUiStore((s) => s.themeMode);
   const setThemeMode = useUiStore((s) => s.setThemeMode);
   const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
-  const rpc = useSelectedMower((s) => s?.rpc);
 
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
@@ -48,16 +47,13 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
     setThemeAnchor(null);
   };
 
-  // Phase 2 will replace the untyped rpc.call() with a generated rpc.mower.reset_emergency().
-  // Until then, the TopBar uses the generic call path so the button works against any backend
-  // that exposes either method.
   const handleResetEmergency = async () => {
-    if (!rpc) return;
+    const {mowers, selected} = useMowersStore.getState();
+    const mower = mowers[selected];
+    if (!mower) return;
     setResetting(true);
     try {
-      await rpc
-        .call('mower.reset_emergency')
-        .catch(() => rpc.call('mower.call_action', {name: 'mower_logic:reset_emergency'}));
+      mower.publishAction('mower_logic/reset_emergency');
       toast.success('Emergency reset sent');
       setEmergencyConfirmOpen(false);
     } catch (e) {

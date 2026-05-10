@@ -12,7 +12,7 @@ import {Box, Dialog, useMediaQuery, useTheme, type SxProps} from '@mui/material'
 import bbox from '@turf/bbox';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
-import {FocusIcon, GlobeIcon, LayoutListIcon, PencilIcon} from 'lucide-react';
+import {ActivityIcon, FocusIcon, GlobeIcon, GridIcon, LayoutListIcon, PencilIcon, RouteIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
@@ -22,12 +22,16 @@ import {shallow} from 'zustand/vanilla/shallow';
 import AreasList from './AreasList';
 import ControlButton from './ControlButton';
 import DockingStationMarker from './DockingStationMarker';
+import AreaPopup from './AreaPopup';
 import {DrawControl} from './DrawControl';
 import {drawStyles} from './drawStyles';
 import {AreaSettingsDialog} from './edit/AreaSettingsDialog';
 import EditControls from './edit/EditControls';
+import MapOverlayLayer from './layers/MapOverlayLayer';
+import PathLayer from './layers/PathLayer';
 import {mapStyles} from './mapStyles';
 import MowerMarker from './MowerMarker';
+import RecordingPanel from './recording/RecordingPanel';
 import TeleopControls from './teleop/TeleopControls';
 import type {BBox} from './types';
 
@@ -44,6 +48,9 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const draw = useMapboxDraw();
   const currentState = useSelectedMower((s) => s?.state.current_state);
   const isDocked = useSelectedMower((s) => s?.state.is_charging ?? false);
+  const plannedPath = useSelectedMower((s) => s?.plannedPath ?? []);
+  const coveragePath = useSelectedMower((s) => s?.coveragePath ?? []);
+  const mowingTrail = useSelectedMower((s) => s?.mowingTrail ?? []);
   const showTeleop = currentState === 'AREA_RECORDING' && !editMode;
   const areas = useMemo(
     () => features.features.filter((feature) => feature.geometry.type === 'Polygon') as Feature<Polygon, AreaProps>[],
@@ -54,7 +61,25 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [showAreaList, setShowAreaList] = useState(!isMobile);
   const [showSatelliteLayer, setShowSatelliteLayer] = useState(false);
+  const [showPlannedPath, setShowPlannedPath] = useState(true);
+  const [showCoveragePath, setShowCoveragePath] = useState(false);
+  const [showMowingTrail, setShowMowingTrail] = useState(false);
+  const [popupAreaId, setPopupAreaId] = useState<string | null>(null);
   const areaSettingsDialog = useDialog(AreaSettingsDialog);
+
+  // The popup needs a stable reference to the polygon and its index in the
+  // mowing-areas list (so map.start_in_area picks the right one). We derive
+  // both off the current `features` collection on every render — cheap, and
+  // the dialog re-renders only when popupAreaId or features change.
+  const popupArea = useMemo<Feature<Polygon, AreaProps> | null>(() => {
+    if (!popupAreaId) return null;
+    return areas.find((a) => a.id === popupAreaId) ?? null;
+  }, [popupAreaId, areas]);
+  const popupMowingIndex = useMemo(() => {
+    if (!popupArea || popupArea.properties.type !== 'mow') return -1;
+    const mowAreas = areas.filter((a) => a.properties.type === 'mow');
+    return mowAreas.findIndex((a) => a.id === popupAreaId);
+  }, [popupArea, areas, popupAreaId]);
 
   const fitToBounds = useCallback(
     (immediate: boolean = false) => {
@@ -108,6 +133,32 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
     [areaSettingsDialog, draw, drawWorkflow, setDrawWorkflow, features, setFeatures],
   );
 
+  // Map clicks open the AreaPopup when they fall inside a working/navigation
+  // area in view mode. Edit mode is exempt — the draw control owns clicks
+  // there. The click coordinates come in lng/lat; we test against each area
+  // polygon with @turf/boolean-point-in-polygon.
+  const handleMapClick = useCallback(
+    (e: {lngLat: {lng: number; lat: number}}) => {
+      if (editMode) return;
+      const pt: Feature<import('geojson').Point> = {
+        type: 'Feature',
+        properties: {},
+        geometry: {type: 'Point', coordinates: [e.lngLat.lng, e.lngLat.lat]},
+      };
+      // Lazy import — keeps the helper out of the SSR bundle for non-map routes.
+      import('@turf/boolean-point-in-polygon').then(({booleanPointInPolygon}) => {
+        for (const area of areas) {
+          if (booleanPointInPolygon(pt, area)) {
+            setPopupAreaId(area.id as string);
+            return;
+          }
+        }
+        setPopupAreaId(null);
+      });
+    },
+    [editMode, areas],
+  );
+
   return (
     <Box sx={{...sx, overflow: 'hidden', position: 'relative'}}>
       <RMap
@@ -122,6 +173,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         initialPitchWithRotate={false}
         dragRotate={false}
         onLoad={(e) => e.target.touchZoomRotate.disableRotation()}
+        onClick={handleMapClick}
       >
         <DrawControl
           displayControlsDefault={false}
@@ -161,6 +213,28 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
           active={showAreaList}
           onClick={() => setShowAreaList(!showAreaList)}
         />
+        <ControlButton
+          position="top-right"
+          spaced
+          icon={RouteIcon}
+          title="Show planned path"
+          active={showPlannedPath}
+          onClick={() => setShowPlannedPath(!showPlannedPath)}
+        />
+        <ControlButton
+          position="top-right"
+          icon={GridIcon}
+          title="Show coverage path"
+          active={showCoveragePath}
+          onClick={() => setShowCoveragePath(!showCoveragePath)}
+        />
+        <ControlButton
+          position="top-right"
+          icon={ActivityIcon}
+          title="Show mowed trail"
+          active={showMowingTrail}
+          onClick={() => setShowMowingTrail(!showMowingTrail)}
+        />
 
         {/* Overlays */}
         {!isMobile && showAreaList && (
@@ -199,10 +273,39 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         {mapData.docking_stations.map((station) => (
           <DockingStationMarker key={station.id} station={station} datum={datum} isDocked={isDocked} />
         ))}
+        <MapOverlayLayer datum={mapData.datum} />
+        {showMowingTrail && (
+          <PathLayer id="mowing-trail" paths={[mowingTrail]} datum={mapData.datum} color="#81C784" width={2} opacity={0.7} />
+        )}
+        {showCoveragePath && (
+          <PathLayer
+            id="coverage-path"
+            paths={coveragePath.map((stripe) => stripe.points)}
+            datum={mapData.datum}
+            color="#00BCD4"
+            width={2}
+            opacity={0.6}
+          />
+        )}
+        {showPlannedPath && (
+          <PathLayer
+            id="planned-path"
+            paths={[plannedPath]}
+            datum={mapData.datum}
+            color="#FF9800"
+            width={3}
+            opacity={0.95}
+            dashed
+          />
+        )}
         <MowerMarker datum={datum} isDocked={isDocked} />
         {showTeleop && <TeleopControls />}
+        {currentState === 'AREA_RECORDING' && !editMode && <RecordingPanel />}
         <DialogOutlet />
       </RMap>
+      {!editMode && popupArea && (
+        <AreaPopup area={popupArea} mowingIndex={popupMowingIndex} onClose={() => setPopupAreaId(null)} />
+      )}
     </Box>
   );
 }

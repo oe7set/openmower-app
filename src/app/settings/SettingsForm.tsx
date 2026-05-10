@@ -1,6 +1,7 @@
 'use client';
 
 import {Page, PageContent, PageHeader} from '@/components/page';
+import {useToast} from '@/hooks/useToast';
 import {useSelectedMower} from '@/stores/mowersStore';
 import JsonSchemaDereferencer from '@json-schema-tools/dereferencer';
 import {ExpandMore as ExpandMoreIcon, Save as SaveIcon} from '@mui/icons-material';
@@ -24,6 +25,7 @@ import merge from 'lodash.merge';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {FormProvider, useForm, useFormContext, useWatch} from 'react-hook-form';
 import {parse as parseYaml} from 'yaml';
+import {buildEnvVarMap, flattenToEnvVars} from './envVarMapping';
 import {FieldsetField} from './fields/FieldsetField';
 import {SettingsContext} from './SettingsContext';
 import {StickyBreadcrumb} from './StickyBreadcrumb';
@@ -31,13 +33,17 @@ import {deepMergeNoArrayMerge, getNestedValue, setNestedValue} from './settingsU
 import type {Field, FieldsetField as FieldsetFieldType} from './types';
 import {jsonSchemaResolver} from './validationResolver';
 
-// TODO: Make this dynamic.
+// Defaults files that the backend's meta.config.defaults() may return. The
+// xbot_monitoring patch only ever populates defaults.yaml (the others are
+// empty stubs) but we keep the merge order stable in case a future deployment
+// ships board- or mower-specific overrides.
 const RELEVANT_DEFAULTS = ['defaults.yaml', 'boards/v1.yaml', 'mowers/YardForce500.yaml'];
 
 interface FormState {
   fields: Field[];
   defaults: Record<string, unknown>;
   handleValidation: (value: Record<string, unknown>) => ValidationResult;
+  envVarMap: Record<string, string>;
 }
 
 export function SettingsForm() {
@@ -56,12 +62,15 @@ export function SettingsForm() {
       try {
         const [schema, defaultsFiles] = await Promise.all([rpc.meta.config.schema(), rpc.meta.config.defaults()]);
         const defaults = RELEVANT_DEFAULTS.reduce<Record<string, unknown>>((acc, path) => {
-          const parsed = parseYaml(defaultsFiles[path]);
+          const yaml = defaultsFiles[path];
+          if (!yaml) return acc;
+          const parsed = parseYaml(yaml);
           merge(acc, parsed);
           return acc;
         }, {});
 
-        const dereferencer = new JsonSchemaDereferencer(JSON.parse(schema), {
+        const parsedSchema = JSON.parse(schema);
+        const dereferencer = new JsonSchemaDereferencer(parsedSchema, {
           recursive: true,
         });
         const dereferencedSchema = await dereferencer.resolve();
@@ -71,10 +80,16 @@ export function SettingsForm() {
         const mergedSchema = mergeAllOf(dereferencedSchema);
         const {fields: formFields, handleValidation} = createHeadlessForm(mergedSchema);
 
+        // Build the property-path → env-var map from the dereferenced schema
+        // so save-time flattening can resolve every leaf without re-walking
+        // the form structure.
+        const envVarMap = buildEnvVarMap(mergedSchema);
+
         const newFormState = {
           fields: formFields as unknown as Field[],
           defaults,
           handleValidation: handleValidation as (value: Record<string, unknown>) => ValidationResult,
+          envVarMap,
         };
         setFormState(newFormState);
       } catch (err) {
@@ -116,6 +131,10 @@ export function SettingsForm() {
 }
 
 function SettingsFormContent({formState}: {formState: FormState}) {
+  const toast = useToast();
+  const rpc = useSelectedMower((s) => s?.rpc);
+  const [saving, setSaving] = useState(false);
+
   const methods = useForm({
     defaultValues: formState.defaults,
     resolver: jsonSchemaResolver(formState.handleValidation),
@@ -185,13 +204,31 @@ function SettingsFormContent({formState}: {formState: FormState}) {
             <Box sx={{display: 'flex', justifyContent: 'flex-end', mb: 2}}>
               <Button
                 variant="contained"
-                startIcon={<SaveIcon />}
-                disabled={!hasChanges || !isValid}
-                onClick={() => {
-                  console.log('save', getConfirmedValues());
+                startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+                disabled={!hasChanges || !isValid || saving || !rpc}
+                onClick={async () => {
+                  if (!rpc) return;
+                  const flatChanges = flattenToEnvVars(getConfirmedValues(), formState.envVarMap);
+                  if (Object.keys(flatChanges).length === 0) {
+                    toast.warning('No changes mapped to environment variables');
+                    return;
+                  }
+                  setSaving(true);
+                  try {
+                    await rpc.meta.config.set({changes: flatChanges as never});
+                    toast.success(
+                      `Saved ${Object.keys(flatChanges).length} setting(s). Restart the mower service to apply.`,
+                    );
+                    confirmedFieldsRef.current.clear();
+                    setConfirmedFields(new Set());
+                  } catch (err) {
+                    toast.error(`Save failed: ${(err as Error).message}`);
+                  } finally {
+                    setSaving(false);
+                  }
                 }}
               >
-                Save
+                {saving ? 'Saving…' : 'Save'}
               </Button>
             </Box>
 
