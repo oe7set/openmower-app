@@ -12,10 +12,18 @@ export type Capabilities = z.infer<typeof capabilitiesSchema>;
 // Actions
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Older xbot_monitoring builds publish `enabled` as 0/1; current builds emit a
+// real boolean. Accept both so the app doesn't break on either.
+const looseBoolean = z.union([
+  z.boolean(),
+  z.literal(0).transform(() => false),
+  z.literal(1).transform(() => true),
+]);
+
 export const actionSchema = z.object({
   action_id: z.string(),
   action_name: z.string(),
-  enabled: z.boolean().default(true),
+  enabled: looseBoolean.default(true),
 });
 export const actionsSchema = z.array(actionSchema);
 export type Action = z.infer<typeof actionSchema>;

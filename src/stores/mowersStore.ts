@@ -232,54 +232,104 @@ export const useMowersStore = create<MowersStore>()(
             set((state) => {
               state.mowers[idx].lastSeen[seenKey] = Date.now();
             });
+            // Wrap every schema-parse in try/catch. A single mismatch (older
+            // backends that don't match the current schemas — e.g. numeric
+            // booleans where a `bool` is expected) used to throw out of the
+            // immer producer, leaving the store unchanged AND the page with an
+            // unhandled rejection. Now we log a warning and move on; the
+            // affected topic just stays at its previous value.
             if (partialTopic === 'robot_state/json') {
-              set((state) => {
-                state.mowers[idx].state = stateSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = stateSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].state = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] robot_state/json parse failed:', e);
+              }
             } else if (partialTopic === 'map/json') {
-              set((state) => {
+              try {
                 const json = JSON.parse(payload.toString());
-                state.mowers[idx].map =
-                  'areas' in json ? mapSchema.parse(json) : convertLegacyMap(legacyMapSchema.parse(json));
-              });
+                const parsed = 'areas' in json ? mapSchema.parse(json) : convertLegacyMap(legacyMapSchema.parse(json));
+                set((state) => {
+                  state.mowers[idx].map = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] map/json parse failed:', e);
+              }
             } else if (partialTopic === 'rpc/response') {
               mowers[idx].rpc._handleResponse(payload.toString());
             } else if (partialTopic === 'capabilities/json') {
-              set((state) => {
-                state.mowers[idx].capabilities = capabilitiesSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = capabilitiesSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].capabilities = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] capabilities/json parse failed:', e);
+              }
             } else if (partialTopic === 'actions/json') {
-              set((state) => {
-                state.mowers[idx].actions = actionsSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = actionsSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].actions = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] actions/json parse failed:', e);
+              }
             } else if (partialTopic === 'map_overlay/json') {
-              set((state) => {
-                state.mowers[idx].mapOverlay = mapOverlaySchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = mapOverlaySchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].mapOverlay = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] map_overlay/json parse failed:', e);
+              }
             } else if (partialTopic === 'sensor_infos/json') {
-              set((state) => {
-                state.mowers[idx].sensorInfos = sensorInfosSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = sensorInfosSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].sensorInfos = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] sensor_infos/json parse failed:', e);
+              }
             } else if (partialTopic === 'planned_path/json') {
-              set((state) => {
-                state.mowers[idx].plannedPath = plannedPathSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = plannedPathSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].plannedPath = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] planned_path/json parse failed:', e);
+              }
             } else if (partialTopic === 'coverage_path/json') {
-              set((state) => {
-                state.mowers[idx].coveragePath = coveragePathSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = coveragePathSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].coveragePath = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] coverage_path/json parse failed:', e);
+              }
             } else if (partialTopic === 'mowing_trail/json') {
-              set((state) => {
-                state.mowers[idx].mowingTrail = mowingTrailSchema.parse(JSON.parse(payload.toString()));
-              });
+              try {
+                const parsed = mowingTrailSchema.parse(JSON.parse(payload.toString()));
+                set((state) => {
+                  state.mowers[idx].mowingTrail = parsed;
+                });
+              } catch (e) {
+                console.warn('[mowersStore] mowing_trail/json parse failed:', e);
+              }
             } else if (partialTopic === 'version/json') {
               try {
                 const parsed = versionSchema.parse(JSON.parse(payload.toString()));
                 set((state) => {
                   state.mowers[idx].versionInfo = parsed;
                 });
-              } catch {
-                // Older backends may publish a different shape — ignore.
+              } catch (e) {
+                console.warn('[mowersStore] version/json parse failed:', e);
               }
             } else if (partialTopic === 'mowing_sessions/json') {
               // Future-only topic — tolerate empty/unexpected payloads so
@@ -290,8 +340,8 @@ export const useMowersStore = create<MowersStore>()(
                 set((state) => {
                   state.mowers[idx].mowingSessions = parsed;
                 });
-              } catch {
-                // ignore — Statistics page falls back to empty-state
+              } catch (e) {
+                console.warn('[mowersStore] mowing_sessions/json parse failed:', e);
               }
             } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
               // sensors/<id>/data is plaintext: a stringified number for DOUBLE
