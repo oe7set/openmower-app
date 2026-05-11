@@ -229,6 +229,74 @@
         "description": "No result is returned if successful.",
         "schema": {"type": "null"}
       }
+    },
+    {
+      "name": "system.restart_service",
+      "summary": "Restart a whitelisted systemd unit on the mower host.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "service",
+          "description": "Service name. Defaults to the main mower service.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["openmower", "mower_logic", "xbot_monitoring", "move_base_flex"]
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Acknowledgement. May time out if the responding service restarts itself.",
+        "schema": {
+          "type": "object",
+          "properties": {"ok": {"type": "boolean"}}
+        }
+      }
+    },
+    {
+      "name": "logs.tail",
+      "summary": "Read recent log lines from a node or 'all' sources on the mower host.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "source",
+          "description": "Source filter. 'all' aggregates every known node.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["all", "mower_logic", "xbot_monitoring", "mower_scheduler", "move_base_flex"]
+          }
+        },
+        {
+          "name": "lines",
+          "description": "Number of trailing lines to return (50–5000).",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 50, "maximum": 5000}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "List of normalised log entries.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ts", "level", "msg", "source"],
+                "properties": {
+                  "ts": {"type": "number", "description": "Epoch seconds."},
+                  "level": {"type": "string", "enum": ["debug", "info", "warn", "error"]},
+                  "msg": {"type": "string"},
+                  "source": {"type": "string"}
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "components": {

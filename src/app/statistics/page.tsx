@@ -1,8 +1,13 @@
 'use client';
 
-import {Page, PageContent, PageHeader} from '@/components/page';
+import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {Box, Card, CardContent, Chip, Typography, useTheme} from '@mui/material';
+import {
+  AccessTime as ClockMuiIcon,
+  PlayCircleOutline as SessionsIcon,
+  Straighten as DistanceIcon,
+} from '@mui/icons-material';
 import {BarChart3Icon, ClockIcon, MapIcon, RouteIcon} from 'lucide-react';
 
 // Forward-looking page. Backend doesn't publish mowing_sessions/json yet, so
@@ -27,12 +32,24 @@ export default function StatisticsPage() {
   const sessions = useSelectedMower((s) => s?.mowingSessions ?? []);
   const hasData = sessions.length > 0;
 
+  // Aggregate top-line numbers. Sessions with missing optional fields contribute 0.
+  const totalDistanceM = sessions.reduce((sum, s) => sum + (s.distance_m ?? 0), 0);
+  const totalDurationS = sessions.reduce((sum, s) => sum + (s.duration_s ?? 0), 0);
+  const distanceLabel =
+    totalDistanceM === 0 ? '—' : totalDistanceM >= 1000 ? `${(totalDistanceM / 1000).toFixed(1)} km` : `${Math.round(totalDistanceM)} m`;
+  const durationHours = totalDurationS / 3600;
+  const durationLabel = durationHours === 0 ? '—' : durationHours >= 1 ? `${durationHours.toFixed(1)} h` : `${Math.round(totalDurationS / 60)} min`;
+
   return (
     <Page>
       <PageHeader
         title="Statistics"
         subtitle="Mowing sessions, coverage and runtime — once your mower starts logging them"
-      />
+      >
+        <HeaderStat icon={<SessionsIcon />} value={sessions.length} label="Sessions" />
+        <HeaderStat icon={<DistanceIcon />} value={distanceLabel} label="Total distance" />
+        <HeaderStat icon={<ClockMuiIcon />} value={durationLabel} label="Total time" />
+      </PageHeader>
       <PageContent>
         {!hasData && (
           <Card sx={{mt: 2, textAlign: 'center', py: 6, px: 3}}>

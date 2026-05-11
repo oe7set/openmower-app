@@ -12,6 +12,8 @@ interface UiStore {
   showPlannedPath: boolean;
   showCoveragePath: boolean;
   showMowingTrail: boolean;
+  /** Show a translucent stripe overlay on each mowing area to visualise pattern. */
+  showPatternPreview: boolean;
   /** Cap for teleop velocity in [0, 1]. The /drive slider writes this. */
   teleopSpeedCap: number;
   setThemeMode: (mode: ThemeMode) => void;
@@ -20,6 +22,7 @@ interface UiStore {
   setShowPlannedPath: (v: boolean) => void;
   setShowCoveragePath: (v: boolean) => void;
   setShowMowingTrail: (v: boolean) => void;
+  setShowPatternPreview: (v: boolean) => void;
   setTeleopSpeedCap: (v: number) => void;
 }
 
@@ -32,6 +35,7 @@ export const useUiStore = create<UiStore>()(
       showPlannedPath: true,
       showCoveragePath: false,
       showMowingTrail: false,
+      showPatternPreview: false,
       teleopSpeedCap: 0.6,
       setThemeMode: (themeMode) => set({themeMode}),
       setUnits: (units) => set({units}),
@@ -39,6 +43,7 @@ export const useUiStore = create<UiStore>()(
       setShowPlannedPath: (showPlannedPath) => set({showPlannedPath}),
       setShowCoveragePath: (showCoveragePath) => set({showCoveragePath}),
       setShowMowingTrail: (showMowingTrail) => set({showMowingTrail}),
+      setShowPatternPreview: (showPatternPreview) => set({showPatternPreview}),
       setTeleopSpeedCap: (teleopSpeedCap) =>
         set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
     }),

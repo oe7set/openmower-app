@@ -1,12 +1,12 @@
 'use client';
 
 import VirtualJoystick from '@/components/map/teleop/VirtualJoystick';
-import {Page, PageContent, PageHeader} from '@/components/page';
+import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useToast} from '@/hooks/useToast';
 import {useTeleop} from '@/hooks/useTeleop';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore} from '@/stores/uiStore';
-import {GpsFixed as GpsIcon, NearMe as HeadingIcon, Stop as StopIcon} from '@mui/icons-material';
+import {GpsFixed as GpsIcon, NearMe as HeadingIcon, Speed as SpeedIcon, Stop as StopIcon} from '@mui/icons-material';
 import {
   Box,
   Button,
@@ -64,7 +64,11 @@ export default function DrivePage() {
 
   return (
     <Page>
-      <PageHeader title="Drive" subtitle="Manually pilot the mower with the virtual joystick" />
+      <PageHeader title="Drive" subtitle="Manually pilot the mower with the virtual joystick">
+        <HeaderStat icon={<SpeedIcon />} value={`${Math.round(cap * 100)}%`} label="Speed cap" />
+        <HeaderStat icon={<HeadingIcon />} value={fmtDeg(state?.pose?.heading)} label="Heading" />
+        <HeaderStat icon={<GpsIcon />} value={`${state?.gps_percentage ?? 0}%`} label="GPS" />
+      </PageHeader>
       <PageContent>
         <Box sx={{display: 'flex', flexDirection: {xs: 'column', md: 'row'}, gap: 2, mt: 2}}>
           {/* Live status / pose readout */}

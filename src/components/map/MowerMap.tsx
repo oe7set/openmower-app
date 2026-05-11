@@ -13,7 +13,7 @@ import {Box, Dialog, useMediaQuery, useTheme, type SxProps} from '@mui/material'
 import bbox from '@turf/bbox';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
-import {ActivityIcon, FocusIcon, GlobeIcon, GridIcon, LayoutListIcon, PencilIcon, RouteIcon} from 'lucide-react';
+import {ActivityIcon, FocusIcon, GlobeIcon, GridIcon, LayoutListIcon, PencilIcon, RouteIcon, SquareIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
@@ -31,6 +31,7 @@ import {AreaSettingsDialog} from './edit/AreaSettingsDialog';
 import EditControls from './edit/EditControls';
 import MapOverlayLayer from './layers/MapOverlayLayer';
 import PathLayer from './layers/PathLayer';
+import PatternPreviewLayer from './layers/PatternPreviewLayer';
 import {mapStyles} from './mapStyles';
 import MowerMarker from './MowerMarker';
 import RecordingPanel from './recording/RecordingPanel';
@@ -72,7 +73,19 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const setShowCoveragePath = useUiStore((s) => s.setShowCoveragePath);
   const showMowingTrail = useUiStore((s) => s.showMowingTrail);
   const setShowMowingTrail = useUiStore((s) => s.setShowMowingTrail);
+  const showPatternPreview = useUiStore((s) => s.showPatternPreview);
+  const setShowPatternPreview = useUiStore((s) => s.setShowPatternPreview);
   const showSatelliteLayer = mapStyle === 'satellite';
+
+  // Outlines for the pattern preview come straight from mapData (already in
+  // mower-relative metres). We only feed the active mowing-areas so obstacles
+  // and nav-areas don't generate stripes.
+  const patternOutlines = useMemo(() => {
+    if (!showPatternPreview) return [];
+    return mapData.areas
+      .filter((a) => a.properties.type === 'mow' && a.properties.active)
+      .map((a) => a.outline);
+  }, [mapData.areas, showPatternPreview]);
   const [popupAreaId, setPopupAreaId] = useState<string | null>(null);
   const areaSettingsDialog = useDialog(AreaSettingsDialog);
 
@@ -244,6 +257,13 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
           active={showMowingTrail}
           onClick={() => setShowMowingTrail(!showMowingTrail)}
         />
+        <ControlButton
+          position="top-right"
+          icon={SquareIcon}
+          title="Show mowing pattern preview"
+          active={showPatternPreview}
+          onClick={() => setShowPatternPreview(!showPatternPreview)}
+        />
 
         {/* Overlays */}
         {!isMobile && showAreaList && (
@@ -312,6 +332,13 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             width={3}
             opacity={0.95}
             dashed
+          />
+        )}
+        {showPatternPreview && (
+          <PatternPreviewLayer
+            mowingAreas={areas.filter((a) => a.properties.type === 'mow')}
+            outlines={patternOutlines}
+            datum={mapData.datum}
           />
         )}
         <MowerMarker datum={datum} isDocked={isDocked} />

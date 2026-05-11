@@ -27,6 +27,7 @@ import {FormProvider, useForm, useFormContext, useWatch} from 'react-hook-form';
 import {parse as parseYaml} from 'yaml';
 import {buildEnvVarMap, flattenToEnvVars} from './envVarMapping';
 import {FieldsetField} from './fields/FieldsetField';
+import RestartServiceButton from './RestartServiceButton';
 import {SettingsContext} from './SettingsContext';
 import {StickyBreadcrumb} from './StickyBreadcrumb';
 import {deepMergeNoArrayMerge, getNestedValue, setNestedValue} from './settingsUtils';
@@ -201,7 +202,8 @@ function SettingsFormContent({formState}: {formState: FormState}) {
             )}
           </PageHeader>
           <PageContent>
-            <Box sx={{display: 'flex', justifyContent: 'flex-end', mb: 2}}>
+            <Box sx={{display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2}}>
+              <RestartServiceButton />
               <Button
                 variant="contained"
                 startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}

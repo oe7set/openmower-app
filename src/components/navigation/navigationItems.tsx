@@ -3,6 +3,7 @@ import {
   BarChart as StatsIcon,
   BugReport as BugReportIcon,
   Dashboard as DashboardIcon,
+  Description as LogsIcon,
   Map as MapIcon,
   Sensors as SensorIcon,
   Settings as SettingsIcon,
@@ -18,6 +19,7 @@ export function createNavigationItems(): NavigationItem[] {
     {label: 'Tasks', icon: <TaskIcon />, path: '/tasks', isGlobal: false},
     {label: 'Sensors', icon: <SensorIcon />, path: '/sensors', isGlobal: false},
     {label: 'Statistics', icon: <StatsIcon />, path: '/statistics', isGlobal: false},
+    {label: 'Logs', icon: <LogsIcon />, path: '/logs', isGlobal: false},
     {label: 'Settings', icon: <SettingsIcon />, path: '/settings', isGlobal: true},
     {label: 'Debug', icon: <BugReportIcon />, path: '/debug', isGlobal: true},
   ];

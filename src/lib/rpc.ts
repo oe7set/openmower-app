@@ -48,10 +48,28 @@ export interface ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfIn
   pattern?: ObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6Z;
   [k: string]: any;
 }
+/**
+ *
+ * Epoch seconds.
+ *
+ */
+export type NumberCxGOTzvB = number;
+export type StringSkVxiS6E = "debug" | "info" | "warn" | "error";
+export interface ObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46Y {
+  ts: NumberCxGOTzvB;
+  level: StringSkVxiS6E;
+  msg: StringDoaGddGA;
+  source: StringDoaGddGA;
+  [k: string]: any;
+}
+export type UnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjy = ObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46Y[];
 export interface ObjectHAgrRKSz { [key: string]: any; }
 export type Integer7Bd9WOt2 = number;
 export interface ObjectIZgu6KjQ { [key: string]: any; }
 export type AnyL9Fw4VUO = any;
+export type String8MpEGeOy = "openmower" | "mower_logic" | "xbot_monitoring" | "move_base_flex";
+export type StringYKWJZZDp = "all" | "mower_logic" | "xbot_monitoring" | "mower_scheduler" | "move_base_flex";
+export type IntegerGCqMpUyL = number;
 export type StringZDJW5SIj = "pong";
 export type UnorderedSetOfStringDoaGddGADvj0XlFa = StringDoaGddGA[];
 export type NullQu0Arl1F = null;
@@ -67,12 +85,20 @@ export interface ObjectOfInteger2AHOqbcQNWXhIVnt {
   [k: string]: any;
 }
 export type UnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WxdXUsec0 = ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7W[];
+export interface ObjectOfBooleanVyG3AEThIj5UHSfl {
+  ok?: BooleanVyG3AETh;
+  [k: string]: any;
+}
+export interface ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525N {
+  entries?: UnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjy;
+  [k: string]: any;
+}
 /**
  *
  * Generated! Represents an alias to any of the provided schemas
  *
  */
-export type AnyOfObjectHAgrRKSzInteger7Bd9WOt2ObjectIZgu6KjQStringDoaGddGAAnyL9Fw4VUOObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WStringDoaGddGAStringZDJW5SIjUnorderedSetOfStringDoaGddGADvj0XlFaNullQu0Arl1FNullQu0Arl1FStringZDJW5SIjStringDoaGddGAObjectHicl3T4FObjectBd6DQSjJObjectOfInteger2AHOqbcQNWXhIVntNullQu0Arl1FUnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WxdXUsec0ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WNullQu0Arl1F = ObjectHAgrRKSz | Integer7Bd9WOt2 | ObjectIZgu6KjQ | StringDoaGddGA | AnyL9Fw4VUO | ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7W | StringZDJW5SIj | UnorderedSetOfStringDoaGddGADvj0XlFa | NullQu0Arl1F | ObjectHicl3T4F | ObjectBd6DQSjJ | ObjectOfInteger2AHOqbcQNWXhIVnt | UnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WxdXUsec0;
+export type AnyOfObjectHAgrRKSzInteger7Bd9WOt2ObjectIZgu6KjQStringDoaGddGAAnyL9Fw4VUOObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WStringDoaGddGAString8MpEGeOyStringYKWJZZDpIntegerGCqMpUyLStringZDJW5SIjUnorderedSetOfStringDoaGddGADvj0XlFaNullQu0Arl1FNullQu0Arl1FStringZDJW5SIjStringDoaGddGAObjectHicl3T4FObjectBd6DQSjJObjectOfInteger2AHOqbcQNWXhIVntNullQu0Arl1FUnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WxdXUsec0ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WNullQu0Arl1FObjectOfBooleanVyG3AEThIj5UHSflObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525N = ObjectHAgrRKSz | Integer7Bd9WOt2 | ObjectIZgu6KjQ | StringDoaGddGA | AnyL9Fw4VUO | ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7W | String8MpEGeOy | StringYKWJZZDp | IntegerGCqMpUyL | StringZDJW5SIj | UnorderedSetOfStringDoaGddGADvj0XlFa | NullQu0Arl1F | ObjectHicl3T4F | ObjectBd6DQSjJ | ObjectOfInteger2AHOqbcQNWXhIVnt | UnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WString8H9Rc1RDObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringDoaGddGAStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyUR72Vd7WxdXUsec0 | ObjectOfBooleanVyG3AEThIj5UHSfl | ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525N;
 
 export class OpenMowerRpc extends OpenMowerBaseRpc {
   rpc = {
@@ -140,5 +166,17 @@ export class OpenMowerRpc extends OpenMowerBaseRpc {
     * Remove a schedule by id.
     */
     delete: async (args: {id: StringDoaGddGA}): Promise<void> => this.call('schedule.delete', args),
+  };
+  system = {
+    /**
+    * Restart a whitelisted systemd unit on the mower host.
+    */
+    restart_service: async (args: {service?: String8MpEGeOy}): Promise<ObjectOfBooleanVyG3AEThIj5UHSfl> => this.call('system.restart_service', args),
+  };
+  logs = {
+    /**
+    * Read recent log lines from a node or 'all' sources on the mower host.
+    */
+    tail: async (args: {source?: StringYKWJZZDp, lines?: IntegerGCqMpUyL}): Promise<ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525N> => this.call('logs.tail', args),
   };
 }
