@@ -198,7 +198,7 @@ export default function LogsView() {
             minHeight: 300,
             overflow: 'auto',
             fontFamily: 'var(--font-dm-mono), monospace',
-            fontSize: '0.78rem',
+            fontSize: {xs: '0.65rem', md: '0.78rem'},
             lineHeight: 1.55,
             border: `1px solid ${theme.palette.divider}`,
             borderRadius: 1,
@@ -220,7 +220,10 @@ export default function LogsView() {
               key={idx}
               sx={{
                 display: 'grid',
-                gridTemplateColumns: '180px 64px 140px 1fr',
+                // On mobile we drop the dedicated source column; the source name
+                // is inlined in front of the message instead. Long messages
+                // scroll horizontally inside the outer auto-overflow container.
+                gridTemplateColumns: {xs: '92px 44px 1fr', md: '180px 64px 140px 1fr'},
                 gap: 1,
                 px: 1.5,
                 py: 0.25,
@@ -230,8 +233,16 @@ export default function LogsView() {
             >
               <Box sx={{color: theme.palette.text.disabled}}>{fmtTs(e.ts)}</Box>
               <Box sx={{textTransform: 'uppercase', fontWeight: 600}}>{e.level}</Box>
-              <Box sx={{color: theme.palette.text.secondary}}>{e.source}</Box>
-              <Box sx={{whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>{highlight(e.msg, search)}</Box>
+              <Box sx={{color: theme.palette.text.secondary, display: {xs: 'none', md: 'block'}}}>{e.source}</Box>
+              <Box sx={{whiteSpace: 'pre', wordBreak: 'normal'}}>
+                <Box
+                  component="span"
+                  sx={{display: {xs: 'inline', md: 'none'}, mr: 0.5, opacity: 0.6, color: theme.palette.text.secondary}}
+                >
+                  {e.source}:
+                </Box>
+                {highlight(e.msg, search)}
+              </Box>
             </Box>
           ))}
         </Box>

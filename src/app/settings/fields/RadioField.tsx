@@ -12,7 +12,7 @@ export function RadioField({field, path}: RadioFieldProps) {
   const {controllerField, hasError, onChange} = useSettingsField(path);
 
   const formatDefaultValue = (value: unknown) => {
-    const match = field.options.find((o) => o.value === value);
+    const match = field.options?.find((o) => o.value === value);
     return match ? match.label : String(value);
   };
 
@@ -22,7 +22,7 @@ export function RadioField({field, path}: RadioFieldProps) {
         <FormLabel component="legend">{field.label}</FormLabel>
         {field.description && <FormHelperText sx={{mt: 0.5, mb: 1, mx: 0}}>{field.description}</FormHelperText>}
         <RadioGroup name={field.name} value={controllerField.value ?? ''} onChange={(e) => onChange(e.target.value)}>
-          {field.options.map((option) => (
+          {field.options?.map((option) => (
             <div key={option.value}>
               <FormControlLabel value={option.value} control={<Radio />} label={option.label} />
               {option.description && (

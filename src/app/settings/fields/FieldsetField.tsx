@@ -15,7 +15,7 @@ export function FieldsetField({field, level = 0, pathPrefix}: FieldsetFieldProps
   if (level === 0) {
     return (
       <>
-        {field.fields.map((subField) => (
+        {field.fields?.map((subField) => (
           <FieldRenderer key={subField.name} field={subField} level={level + 1} pathPrefix={pathPrefix} />
         ))}
       </>
@@ -84,7 +84,7 @@ function FieldsetAccordion({field, level, pathPrefix}: {field: FieldsetFieldType
             {field.description}
           </Typography>
         )}
-        {field.fields.map((subField) => (
+        {field.fields?.map((subField) => (
           <FieldRenderer key={subField.name} field={subField} level={level + 1} pathPrefix={pathPrefix} />
         ))}
       </AccordionDetails>

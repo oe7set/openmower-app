@@ -10,7 +10,7 @@ export default function PageContent({children, sx}: PropsWithChildren<PageConten
     <Box
       sx={{
         mx: {xs: 0, md: 2},
-        mt: {xs: 1, md: -4},
+        mt: {xs: 1, md: -6},
         position: 'relative',
         zIndex: 2,
         ...sx,
