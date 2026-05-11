@@ -8,28 +8,16 @@ import StateCard from './dashboard/StateCard';
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useMowers, useSelectedMower} from '@/stores/mowersStore';
 import {BatteryFull, CheckCircle, GpsFixed, Router} from '@mui/icons-material';
-import {Alert, Box, Typography} from '@mui/material';
+import {Box, Typography} from '@mui/material';
 
 export default function Dashboard() {
+  // The OnboardingDialog mounted in AppShell handles the no-mower case
+  // globally — we render the normal page even with mowers.length === 0 so the
+  // dashboard structure stays consistent under the modal.
   const mowers = useMowers();
-  const selectedMower = useSelectedMower();
   const battery = useSelectedMower((s) => s?.state.battery_percentage ?? 0);
   const gps = useSelectedMower((s) => s?.state.gps_percentage ?? 0);
   const state = useSelectedMower((s) => s?.state.current_state ?? 'UNKNOWN');
-
-  if (mowers.length === 0) {
-    return (
-      <Page>
-        <PageHeader title="Dashboard" subtitle="Monitor and control your OpenMower fleet" />
-        <PageContent>
-          <Alert severity="info">
-            No mowers configured. Set <code>MOWER_MQTT_WS_URL</code> or create a <code>config.json</code> at the repo
-            root.
-          </Alert>
-        </PageContent>
-      </Page>
-    );
-  }
 
   return (
     <Page>
@@ -41,12 +29,6 @@ export default function Dashboard() {
       </PageHeader>
 
       <PageContent>
-        {!selectedMower && (
-          <Alert severity="warning" sx={{mb: 3}}>
-            Waiting for mower data…
-          </Alert>
-        )}
-
         <Typography variant="h5" fontWeight="600" sx={{mt: {xs: 2, md: 3}, mb: 2}}>
           Status
         </Typography>

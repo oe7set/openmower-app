@@ -1,0 +1,11 @@
+{
+  "mowers": [
+    {
+      "id": "1",
+      "name": "OpenMower",
+      "description": "My garden",
+      "mqtt_ws_url": "ws://openmower.local:9001",
+      "mqtt_prefix": ""
+    }
+  ]
+}

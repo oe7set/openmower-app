@@ -7,7 +7,7 @@ import {Feature, Polygon} from 'geojson';
 import {CircleSlashIcon, MenuIcon, RouteIcon, ScissorsIcon, SquareDashedIcon, type LucideIcon} from 'lucide-react';
 
 const TYPE_CONFIG: Record<AreaProps['type'], {icon: LucideIcon; color: string; strokeWidth: number}> = {
-  mow: {icon: ScissorsIcon, color: '#4caf50', strokeWidth: 3},
+  mow: {icon: ScissorsIcon, color: '#1B9D52', strokeWidth: 3},
   nav: {icon: RouteIcon, color: '#42a5f5', strokeWidth: 2},
   obstacle: {icon: CircleSlashIcon, color: '#78909c', strokeWidth: 1.5},
   draft: {icon: SquareDashedIcon, color: '#9e9e9e', strokeWidth: 2},

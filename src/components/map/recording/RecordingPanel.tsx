@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import {Box, Button, Chip, Paper, Tooltip, Typography, useTheme, useMediaQuery} from '@mui/material';
 import {useState} from 'react';
+import {MAP_OVERLAY_PANEL} from '../zIndex';
 
 // All action IDs registered by mower_logic's AreaRecordingBehavior. They
 // appear in actions/json once the mower enters AREA_RECORDING.
@@ -63,15 +64,15 @@ export default function RecordingPanel() {
       elevation={6}
       sx={{
         position: 'absolute',
-        top: isMobile ? 56 : 8,
+        top: 8,
         right: isMobile ? 8 : 60,
         width: isMobile ? 'calc(100% - 16px)' : 320,
         p: 2,
         borderRadius: 2,
-        zIndex: 9,
+        zIndex: MAP_OVERLAY_PANEL,
         backdropFilter: 'blur(8px)',
         backgroundColor:
-          theme.palette.mode === 'dark' ? 'rgba(30,30,30,0.92)' : 'rgba(255,255,255,0.92)',
+          theme.palette.mode === 'dark' ? 'rgba(22,24,25,0.92)' : 'rgba(255,255,255,0.92)',
       }}
     >
       <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>

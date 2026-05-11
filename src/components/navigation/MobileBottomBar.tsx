@@ -32,11 +32,15 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: theme.zIndex.appBar + 1,
+          // Sits at appBar level — map overlays use a dedicated higher band
+          // (see src/components/map/zIndex.ts) so floating panels and the
+          // joystick stay on top on mobile.
+          zIndex: theme.zIndex.appBar,
           borderRadius: '16px 16px 0 0',
           boxShadow: '0 -2px 12px -2px rgba(0,0,0,0.2)',
-          border: '1px solid rgba(0,0,0,0.08)',
+          border: `1px solid ${theme.palette.divider}`,
           borderBottom: 'none',
+          paddingBottom: 'env(safe-area-inset-bottom)',
           display: {xs: 'block', md: 'none'},
         }}
       >

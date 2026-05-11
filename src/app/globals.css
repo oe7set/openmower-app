@@ -54,26 +54,26 @@ a {
 
 .maplibregl-ctrl-active,
 .maplibregl-ctrl button.maplibregl-ctrl-shrink {
-  background-color: #ffc107 !important;
+  background-color: #F5A523 !important;
 }
 
 @media ((hover: hover) and (pointer: fine)) {
   .maplibregl-ctrl button:not(:disabled):hover {
-      background-color: #ffd54f !important;
+      background-color: #F8B752 !important;
       border-radius: 4px;
   }
 }
 
-/* Dark mode map controls */
+/* Dark mode map controls — brand-aligned surface3 background. */
 [data-theme="dark"] .maplibregl-ctrl-group {
-  background: #444;
+  background: #25282A;
   border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.15), 0 2px 8px rgba(0,0,0,0.8);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.8);
 }
 
 [data-theme="dark"] .maplibregl-ctrl-group button {
-  background-color: #444;
-  color: #fff;
+  background-color: #25282A;
+  color: #ECECEC;
 }
 
 
@@ -101,17 +101,17 @@ a {
 [data-theme="dark"] .maplibregl-ctrl-active button,
 [data-theme="dark"] .maplibregl-ctrl-active,
 [data-theme="dark"] .maplibregl-ctrl button.maplibregl-ctrl-shrink {
-  background-color: #ffc107 !important;
+  background-color: #F5A523 !important;
   color: #000 !important;
 }
 
 @media ((hover: hover) and (pointer: fine)) {
   [data-theme="dark"] .maplibregl-ctrl button:not(:disabled):hover {
-    background-color: #555 !important;
+    background-color: #2F3335 !important;
   }
   [data-theme="dark"] .maplibregl-ctrl-active:hover,
   [data-theme="dark"] .maplibregl-ctrl button.maplibregl-ctrl-shrink:hover {
-    background-color: #ffd54f !important;
+    background-color: #F8B752 !important;
   }
 }
 

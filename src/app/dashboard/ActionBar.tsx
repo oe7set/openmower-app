@@ -98,14 +98,12 @@ export default function ActionBar() {
             </Button>
           ))}
         </Box>
-        {!selected && (
-          <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 1.5}}>
-            No mower connected.
-          </Typography>
-        )}
         {selected && selected.actions.length === 0 && (
+          // The connection banner up top covers the "why" already — keep this
+          // tight. If actions never arrive but other topics do, the user knows
+          // it's a mower_logic-side issue, not a connection one.
           <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 1.5}}>
-            Waiting for the mower to publish available actions…
+            No actions available yet — see banner above for connection details.
           </Typography>
         )}
       </CardContent>

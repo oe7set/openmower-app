@@ -12,7 +12,7 @@ export default function SidebarHeader() {
         pointerEvents: 'none',
       }}
     >
-      <Image src="/logo.svg" width={230} height={70} alt={''} />
+      <Image src="/logo.svg" width={230} height={70} alt="OpenMower" priority />
     </Box>
   );
 }

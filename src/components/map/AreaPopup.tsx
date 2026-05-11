@@ -7,6 +7,7 @@ import type {Feature, Polygon} from 'geojson';
 import {PlayArrow as PlayIcon} from '@mui/icons-material';
 import {Box, Button, Paper, Typography, useTheme} from '@mui/material';
 import {useState} from 'react';
+import {MAP_OVERLAY_FLOATING} from './zIndex';
 
 interface AreaPopupProps {
   /** The selected polygon feature, or null when nothing is selected. */
@@ -48,16 +49,16 @@ export default function AreaPopup({area, mowingIndex, onClose}: AreaPopupProps) 
       elevation={6}
       sx={{
         position: 'absolute',
-        bottom: 24,
+        bottom: 'calc(24px + env(safe-area-inset-bottom))',
         left: '50%',
         transform: 'translateX(-50%)',
         px: 2,
         py: 1.5,
         borderRadius: 2,
-        zIndex: 8,
+        zIndex: MAP_OVERLAY_FLOATING,
         backdropFilter: 'blur(8px)',
         backgroundColor:
-          theme.palette.mode === 'dark' ? 'rgba(30,30,30,0.92)' : 'rgba(255,255,255,0.92)',
+          theme.palette.mode === 'dark' ? 'rgba(22,24,25,0.92)' : 'rgba(255,255,255,0.92)',
         minWidth: 260,
       }}
     >

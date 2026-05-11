@@ -209,6 +209,34 @@ export type LegacyArea = z.infer<typeof legacyAreaSchema>;
 export type LegacyMapData = z.infer<typeof legacyMapSchema>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Backend version info — published retained on <prefix>version/json by xbot_monitoring.
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const versionSchema = z.object({version: z.string()});
+export type VersionInfo = z.infer<typeof versionSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mowing sessions (statistics)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Future contract — the backend doesn't publish mowing_sessions/json yet, but
+// we wire the subscription + page in advance so it lights up automatically the
+// day a session aggregator lands. Fields chosen to match what mowing-history
+// UIs in the reference apps display today.
+export const mowingSessionSchema = z.object({
+  id: z.string(),
+  start_ts: z.number(), // epoch seconds
+  end_ts: z.number().optional(),
+  area_id: z.string().optional(),
+  distance_m: z.number().optional(),
+  duration_s: z.number().optional(),
+  coverage_m2: z.number().optional(),
+});
+export const mowingSessionsSchema = z.array(mowingSessionSchema);
+export type MowingSession = z.infer<typeof mowingSessionSchema>;
+export type MowingSessions = z.infer<typeof mowingSessionsSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Defaults
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -43,12 +43,14 @@ export default function PageHeader({title, subtitle, children, sx}: PropsWithChi
 
       <Box sx={{px: 3}}>
         <Box sx={{position: 'relative', zIndex: 1}}>
-          {/* Title */}
+          {/* Title — relies on the brand's h2 weight (600) instead of forcing
+              700 so the typography rhythm stays consistent with the rest of
+              the app. */}
           <Typography
             variant="h2"
             component="h1"
             gutterBottom
-            sx={{fontWeight: 700, textShadow: '0 2px 4px rgba(0,0,0,0.1)'}}
+            sx={{textShadow: '0 2px 4px rgba(0,0,0,0.15)'}}
           >
             {title}
           </Typography>

@@ -12,12 +12,15 @@ interface UiStore {
   showPlannedPath: boolean;
   showCoveragePath: boolean;
   showMowingTrail: boolean;
+  /** Cap for teleop velocity in [0, 1]. The /drive slider writes this. */
+  teleopSpeedCap: number;
   setThemeMode: (mode: ThemeMode) => void;
   setUnits: (units: Units) => void;
   setMapStyle: (style: MapStyle) => void;
   setShowPlannedPath: (v: boolean) => void;
   setShowCoveragePath: (v: boolean) => void;
   setShowMowingTrail: (v: boolean) => void;
+  setTeleopSpeedCap: (v: number) => void;
 }
 
 export const useUiStore = create<UiStore>()(
@@ -29,12 +32,15 @@ export const useUiStore = create<UiStore>()(
       showPlannedPath: true,
       showCoveragePath: false,
       showMowingTrail: false,
+      teleopSpeedCap: 0.6,
       setThemeMode: (themeMode) => set({themeMode}),
       setUnits: (units) => set({units}),
       setMapStyle: (mapStyle) => set({mapStyle}),
       setShowPlannedPath: (showPlannedPath) => set({showPlannedPath}),
       setShowCoveragePath: (showCoveragePath) => set({showCoveragePath}),
       setShowMowingTrail: (showMowingTrail) => set({showMowingTrail}),
+      setTeleopSpeedCap: (teleopSpeedCap) =>
+        set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
     }),
     {name: 'openmower-ui'},
   ),

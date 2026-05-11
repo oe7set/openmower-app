@@ -15,16 +15,19 @@ function prettyState(state: string): string {
     UNDOCKING: 'Undocking',
     AREA_RECORDING: 'Recording area',
     EMERGENCY: 'Emergency',
-    UNKNOWN: 'Unknown',
+    UNKNOWN: 'Awaiting data',
   };
   return map[state] ?? state;
 }
 
-function stateColor(state: string): 'success' | 'info' | 'warning' | 'error' | 'default' {
+function stateColor(state: string, hasData: boolean): 'success' | 'info' | 'warning' | 'error' | 'default' {
   if (state === 'EMERGENCY') return 'error';
   if (state === 'MOWING' || state === 'AREA_RECORDING') return 'success';
   if (state === 'DOCKING' || state === 'UNDOCKING') return 'info';
   if (state === 'IDLE') return 'default';
+  // UNKNOWN with no data yet: render as a neutral default chip so it doesn't
+  // shout "warning" before the broker has had a chance to deliver state.
+  if (state === 'UNKNOWN' && !hasData) return 'default';
   return 'warning';
 }
 
@@ -36,8 +39,11 @@ export default function StateCard() {
   const area = useSelectedMower((s) => s?.state.current_area ?? -1);
   const path = useSelectedMower((s) => s?.state.current_path ?? -1);
   const pathIdx = useSelectedMower((s) => s?.state.current_path_index ?? -1);
+  // True once at least one robot_state/json payload has arrived. Lets us
+  // distinguish "we got UNKNOWN from the mower" from "we never heard from it".
+  const hasData = useSelectedMower((s) => Boolean(s?.lastSeen['robot_state/json']));
 
-  const color = stateColor(state);
+  const color = stateColor(state, hasData);
   const progressPct = Math.max(0, Math.min(100, Math.round(progress * 100)));
   const showProgress = state === 'MOWING' || state === 'DOCKING' || state === 'UNDOCKING';
 

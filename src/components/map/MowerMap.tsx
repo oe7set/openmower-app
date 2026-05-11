@@ -21,6 +21,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DialogOutlet, useDialog} from 'react-dialog-async';
 import {shallow} from 'zustand/vanilla/shallow';
 import AreasList from './AreasList';
+import {mapPalette} from './colors';
 import ControlButton from './ControlButton';
 import DockingStationMarker from './DockingStationMarker';
 import AreaPopup from './AreaPopup';
@@ -60,6 +61,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const bounds = useRef<BBox>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const pathColors = mapPalette(theme);
   const [showAreaList, setShowAreaList] = useState(!isMobile);
   // Persisted view preferences (theme is in uiStore too — these stay aligned).
   const mapStyle = useUiStore((s) => s.mapStyle);
@@ -282,14 +284,21 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         ))}
         <MapOverlayLayer datum={mapData.datum} />
         {showMowingTrail && (
-          <PathLayer id="mowing-trail" paths={[mowingTrail]} datum={mapData.datum} color="#81C784" width={2} opacity={0.7} />
+          <PathLayer
+            id="mowing-trail"
+            paths={[mowingTrail]}
+            datum={mapData.datum}
+            color={pathColors.trail}
+            width={2}
+            opacity={0.7}
+          />
         )}
         {showCoveragePath && (
           <PathLayer
             id="coverage-path"
             paths={coveragePath.map((stripe) => stripe.points)}
             datum={mapData.datum}
-            color="#00BCD4"
+            color={pathColors.coverage}
             width={2}
             opacity={0.6}
           />
@@ -299,7 +308,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             id="planned-path"
             paths={[plannedPath]}
             datum={mapData.datum}
-            color="#FF9800"
+            color={pathColors.planned}
             width={3}
             opacity={0.95}
             dashed

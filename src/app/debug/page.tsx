@@ -3,19 +3,21 @@
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {outerCardStyles} from '@/lib/cardStyles';
 import type {OpenMowerRpc} from '@/lib/rpc';
-import type {MqttStatus} from '@/stores/mowersStore';
-import {useMowers, useMowersStore} from '@/stores/mowersStore';
-import type {Action, Capabilities, MapData, MapOverlay} from '@/stores/schemas';
+import type {ExpectedTopic, MqttStatus} from '@/stores/mowersStore';
+import {EXPECTED_TOPICS, useMowers, useMowersStore} from '@/stores/mowersStore';
+import type {Action, Capabilities, MapData, MapOverlay, VersionInfo} from '@/stores/schemas';
 import {
   BugReport as BugReportIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
+  Info as InfoIcon,
   Link as LinkIcon,
   Layers as LayersIcon,
   PlayArrow as PlayArrowIcon,
   Map as MapIcon,
   NetworkCheck as NetworkCheckIcon,
   Refresh as RefreshIcon,
+  Sensors as TopicsIcon,
   TouchApp as TouchAppIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
@@ -134,6 +136,51 @@ function MqttSection({mqttUrl, mqttPrefix, mqttStatus}: {mqttUrl: string; mqttPr
               (none)
             </Typography>
           )}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+// Frontend version is read at build time via the standard Next.js env var
+// (set automatically from package.json by Next; falls back to 'dev' locally).
+const FRONTEND_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.1.0';
+
+function VersionSection({backend}: {backend: VersionInfo | null}) {
+  return (
+    <Box>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
+        <InfoIcon fontSize="small" color="action" />
+        <Typography variant="subtitle2" fontWeight={600}>
+          Versions
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'max-content 1fr',
+          columnGap: 2,
+          rowGap: 0.5,
+          alignItems: 'baseline',
+        }}
+      >
+        <Typography variant="body2" color="text.secondary" fontWeight={500}>
+          Backend
+        </Typography>
+        <Typography variant="body2" sx={{fontFamily: 'var(--font-dm-mono), monospace', fontSize: '0.8rem'}}>
+          {backend ? (
+            backend.version
+          ) : (
+            <Typography component="span" color="text.disabled" fontSize="inherit">
+              not received yet
+            </Typography>
+          )}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" fontWeight={500}>
+          Frontend
+        </Typography>
+        <Typography variant="body2" sx={{fontFamily: 'var(--font-dm-mono), monospace', fontSize: '0.8rem'}}>
+          {FRONTEND_VERSION}
         </Typography>
       </Box>
     </Box>
@@ -366,15 +413,92 @@ function MapSection({map}: {map: MapData}) {
   );
 }
 
+// Per-mower topic liveness table. Reads `lastSeen` directly so we don't need a
+// new selector — re-renders whenever the store ticks (every 2s) or a topic
+// arrives. Crucial for the "is the mower silent?" question that drives users
+// to /debug in the first place.
+function TopicsSection({mowerId, lastSeen}: {mowerId: string; lastSeen: Record<string, number>}) {
+  // Force the row's "age" cell to refresh on every store tick even when a
+  // topic hasn't arrived since the last render — otherwise stale ages would
+  // freeze. Cheap because we only read a number.
+  useMowersStore((s) => s.lastSeenTick);
+  const theme = useTheme();
+  const now = Date.now();
+  const rows: {topic: ExpectedTopic; lastMs?: number}[] = EXPECTED_TOPICS.map((topic) => ({
+    topic,
+    lastMs: lastSeen[topic],
+  }));
+
+  return (
+    <Box>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
+        <TopicsIcon fontSize="small" color="action" />
+        <Typography variant="subtitle2" fontWeight={600}>
+          Topics
+        </Typography>
+        <Chip
+          label={`${rows.filter((r) => r.lastMs !== undefined).length}/${rows.length}`}
+          size="small"
+          color={rows.every((r) => r.lastMs !== undefined) ? 'success' : 'warning'}
+        />
+      </Box>
+      <Box
+        component="table"
+        sx={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          '& th, & td': {
+            textAlign: 'left',
+            py: 0.75,
+            pr: 1.5,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            fontSize: '0.85rem',
+          },
+          '& th': {color: 'text.secondary', fontSize: '0.7rem', textTransform: 'uppercase'},
+          '& td.topic': {fontFamily: 'var(--font-dm-mono), monospace'},
+        }}
+      >
+        <thead>
+          <tr>
+            <th>Topic</th>
+            <th style={{width: 100}}>Status</th>
+            <th style={{width: 120}}>Last seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({topic, lastMs}) => {
+            const ageMs = lastMs !== undefined ? now - lastMs : undefined;
+            const status =
+              ageMs === undefined ? 'never' : ageMs > 10_000 ? 'stale' : 'live';
+            const color: 'default' | 'success' | 'warning' | 'error' =
+              status === 'live' ? 'success' : status === 'stale' ? 'warning' : 'error';
+            return (
+              <tr key={`${mowerId}-${topic}`}>
+                <td className="topic">{topic}</td>
+                <td>
+                  <Chip label={status} size="small" color={color} sx={{fontWeight: 600}} />
+                </td>
+                <td>{ageMs === undefined ? '—' : ageMs < 1000 ? 'just now' : `${Math.round(ageMs / 1000)}s ago`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Box>
+    </Box>
+  );
+}
+
 export default function DebugPage() {
   const theme = useTheme();
   const mowers = useMowers();
   const mqttStatuses = useMowersStore((s) => s.mqttStatuses);
+  // Subscribe to the global tick so the TopicsSection rows refresh ages.
+  useMowersStore((s) => s.lastSeenTick);
   const connectedCount = mowers.filter((m) => mqttStatuses[m.id] === 'connected').length;
 
   return (
     <Page>
-      <PageHeader title="Debug" subtitle="Connection health and diagnostics for all configured mowers">
+      <PageHeader title="Diagnostics" subtitle="Connection health and per-topic liveness for all configured mowers">
         <HeaderStat icon={<BugReportIcon />} value={mowers.length} label="Mowers configured" />
         <HeaderStat icon={<CheckCircleIcon />} value={connectedCount} label="MQTT connected" />
       </PageHeader>
@@ -409,7 +533,15 @@ export default function DebugPage() {
 
                     <Divider />
 
+                    <VersionSection backend={mower.versionInfo} />
+
+                    <Divider />
+
                     <RpcSection rpc={mower.rpc} />
+
+                    <Divider />
+
+                    <TopicsSection mowerId={mower.id} lastSeen={mower.lastSeen} />
 
                     <Divider />
 

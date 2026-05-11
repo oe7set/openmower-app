@@ -1,4 +1,7 @@
-const green = '#4caf50';
+// Categorical area-type colours — not directly tied to theme palette so the
+// rendering stays identical on light vs dark map styles. The green tracks the
+// brand primary hue.
+const green = '#1B9D52';
 const orange = '#fbb03b';
 const white = '#dddddd';
 const black = '#000000';

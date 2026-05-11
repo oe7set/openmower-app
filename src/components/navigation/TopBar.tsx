@@ -1,7 +1,7 @@
 'use client';
 
 import {useToast} from '@/hooks/useToast';
-import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
+import {useConnectionDiagnostic, useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore, type ThemeMode} from '@/stores/uiStore';
 import {Brightness4, DarkMode, LightMode, Menu as MenuIcon, SettingsBrightness, Warning} from '@mui/icons-material';
 import {
@@ -16,10 +16,10 @@ import {
   Menu,
   MenuItem,
   Tooltip,
-  Typography,
   keyframes,
   useTheme,
 } from '@mui/material';
+import {usePathname, useRouter} from 'next/navigation';
 import {useState} from 'react';
 
 interface TopBarProps {
@@ -34,9 +34,12 @@ const blink = keyframes`
 export default function TopBar({onMenuOpen}: TopBarProps) {
   const theme = useTheme();
   const toast = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
   const themeMode = useUiStore((s) => s.themeMode);
   const setThemeMode = useUiStore((s) => s.setThemeMode);
   const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
+  const diag = useConnectionDiagnostic();
 
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
@@ -66,6 +69,26 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
   const ThemeIcon =
     themeMode === 'dark' ? DarkMode : themeMode === 'light' ? LightMode : SettingsBrightness;
 
+  // Quick-glance pill colour. Mirrors the banner state but compressed.
+  const pillColor =
+    diag.status === 'ok'
+      ? theme.palette.success.main
+      : diag.status === 'connecting'
+      ? theme.palette.info.main
+      : diag.status === 'no-broker'
+      ? theme.palette.error.main
+      : theme.palette.warning.main;
+  const pillTooltip =
+    diag.status === 'ok'
+      ? 'Mower connected'
+      : diag.status === 'connecting'
+      ? 'Connecting to broker…'
+      : diag.status === 'no-broker'
+      ? 'Broker unreachable — click for diagnostics'
+      : diag.status === 'no-mower'
+      ? 'No mower configured'
+      : 'Mower data partial — click for diagnostics';
+
   return (
     <>
       <Box
@@ -92,6 +115,27 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
         </IconButton>
 
         <Box sx={{flex: 1}} />
+
+        <Tooltip title={pillTooltip}>
+          <IconButton
+            aria-label="Connection status"
+            size="small"
+            onClick={() => {
+              if (pathname !== '/debug') router.push('/debug');
+            }}
+            sx={{p: 0.5}}
+          >
+            <Box
+              sx={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                bgcolor: pillColor,
+                boxShadow: `0 0 0 2px ${pillColor}33`,
+              }}
+            />
+          </IconButton>
+        </Tooltip>
 
         {emergency && (
           <Tooltip title="Emergency active — click to reset">

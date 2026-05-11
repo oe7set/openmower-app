@@ -2,6 +2,7 @@
 
 import {useTeleop} from '@/hooks/useTeleop';
 import {Box, useMediaQuery, useTheme} from '@mui/material';
+import {MAP_OVERLAY_TELEOP} from '../zIndex';
 import VirtualJoystick from './VirtualJoystick';
 
 export default function TeleopControls() {
@@ -13,10 +14,12 @@ export default function TeleopControls() {
     <Box
       sx={{
         position: 'absolute',
-        bottom: isMobile ? 16 : 24,
+        // Account for iPhone home-indicator safe area on mobile so the joystick
+        // doesn't sit under the system gesture bar.
+        bottom: isMobile ? 'calc(16px + env(safe-area-inset-bottom))' : 24,
         left: isMobile ? '50%' : 24,
         transform: isMobile ? 'translateX(-50%)' : 'none',
-        zIndex: 10,
+        zIndex: MAP_OVERLAY_TELEOP,
       }}
     >
       <VirtualJoystick onVelocityChange={setVelocity} />

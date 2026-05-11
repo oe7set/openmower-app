@@ -2,6 +2,8 @@
 
 import {Box} from '@mui/material';
 import {useState} from 'react';
+import ConnectionBanner from '../diagnostics/ConnectionBanner';
+import OnboardingDialog from '../onboarding/OnboardingDialog';
 import MobileBottomBar from './MobileBottomBar';
 import Sidebar from './sidebar/Sidebar';
 import TopBar from './TopBar';
@@ -18,11 +20,14 @@ export default function AppShell({children}: {children: React.ReactNode}) {
           display: 'flex',
           flexDirection: 'column',
           minWidth: 0,
-          pb: {xs: 7, md: 0},
+          // Reserve room for the fixed MobileBottomBar (~56px) plus the iOS
+          // home-indicator safe area so content never hides under it.
+          pb: {xs: 'calc(56px + env(safe-area-inset-bottom))', md: 0},
           overflow: 'hidden',
         }}
       >
         <TopBar onMenuOpen={() => setMobileMenuOpen(true)} />
+        <ConnectionBanner />
         <Box
           component="main"
           sx={{
@@ -35,6 +40,7 @@ export default function AppShell({children}: {children: React.ReactNode}) {
         </Box>
       </Box>
       <MobileBottomBar onMenuOpen={() => setMobileMenuOpen(true)} />
+      <OnboardingDialog />
     </Box>
   );
 }

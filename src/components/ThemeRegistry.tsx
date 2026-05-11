@@ -5,7 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import {ThemeProvider} from '@mui/material/styles';
 import {SnackbarProvider} from 'notistack';
 import {useEffect, useState} from 'react';
-import {darkTheme, lightTheme} from '@/theme';
+import {darkTheme, lightTheme, PRE_HYDRATION_BG} from '@/theme';
 import RpcErrorBridge from './RpcErrorBridge';
 
 export default function ThemeRegistry({children}: {children: React.ReactNode}) {
@@ -29,7 +29,7 @@ export default function ThemeRegistry({children}: {children: React.ReactNode}) {
           : 'light';
       setResolved(next);
       document.documentElement.setAttribute('data-theme', next);
-      document.body.style.background = next === 'dark' ? '#121212' : '#fafafa';
+      document.body.style.background = PRE_HYDRATION_BG[next];
     };
     apply();
 

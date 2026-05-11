@@ -2,6 +2,7 @@
 
 import {useSelectedMower} from '@/stores/mowersStore';
 import type {MapData} from '@/stores/schemas';
+import {useTheme} from '@mui/material';
 import {useMemo} from 'react';
 import MapMarker from './MapMarker';
 
@@ -41,6 +42,7 @@ interface MowerMarkerProps {
 
 export default function MowerMarker({datum, isDocked}: MowerMarkerProps) {
   const pose = useSelectedMower((s) => s?.state.pose);
+  const theme = useTheme();
 
   const position = useMemo(() => {
     if (!pose) return null;
@@ -49,7 +51,7 @@ export default function MowerMarker({datum, isDocked}: MowerMarkerProps) {
 
   if (!position || !pose || isDocked) return null;
 
-  const markerColor = pose.pos_accuracy === 0 ? '#F44336' : '#4CAF50';
+  const markerColor = pose.pos_accuracy === 0 ? theme.palette.error.main : theme.palette.primary.main;
 
   return (
     <MapMarker

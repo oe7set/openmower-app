@@ -3,17 +3,10 @@
 import {useSelectedMower} from '@/stores/mowersStore';
 import {fallbackDatum, type MapData, type OverlayColor, type OverlayPolygon} from '@/stores/schemas';
 import {datumToRelative, pointsToAbsolute} from '@/utils/coordinates';
+import {useTheme} from '@mui/material';
 import type {Feature, FeatureCollection, LineString, Polygon} from 'geojson';
 import {RLayer, RSource} from 'maplibre-react-components';
 import {useMemo} from 'react';
-
-// xbot_msgs MapOverlayPolygon.color is encoded as 0|1|2 (red|green|blue).
-// We map it to readable hex strings here so paint expressions stay simple.
-const COLOR_HEX: Record<OverlayColor, string> = {
-  0: '#F44336',
-  1: '#4CAF50',
-  2: '#2196F3',
-};
 
 interface MapOverlayLayerProps {
   datum?: MapData['datum'];
@@ -22,6 +15,18 @@ interface MapOverlayLayerProps {
 export default function MapOverlayLayer({datum}: MapOverlayLayerProps) {
   const polygons = useSelectedMower((s) => s?.mapOverlay.polygons ?? []);
   const effectiveDatum = datum ?? fallbackDatum;
+  const theme = useTheme();
+
+  // xbot_msgs MapOverlayPolygon.color is encoded as 0|1|2 (red|green|blue).
+  // Mapped to theme palette so dark/light + brand stay consistent.
+  const colorByCode: Record<OverlayColor, string> = useMemo(
+    () => ({
+      0: theme.palette.error.main,
+      1: theme.palette.primary.main,
+      2: theme.palette.info.main,
+    }),
+    [theme],
+  );
 
   const featureCollection = useMemo<FeatureCollection>(() => {
     if (polygons.length === 0) return {type: 'FeatureCollection', features: []};
@@ -38,14 +43,14 @@ export default function MapOverlayLayer({datum}: MapOverlayLayerProps) {
         type: 'Feature',
         id: idx,
         properties: {
-          color: COLOR_HEX[poly.color],
+          color: colorByCode[poly.color],
           line_width: Math.max(1, poly.line_width * 8),
         },
         geometry,
       };
     });
     return {type: 'FeatureCollection', features};
-  }, [polygons, effectiveDatum]);
+  }, [polygons, effectiveDatum, colorByCode]);
 
   if (featureCollection.features.length === 0) return null;
 
