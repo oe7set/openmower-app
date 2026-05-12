@@ -1,6 +1,6 @@
 'use client';
 
-import {useMap, useMapboxDraw, useMapSelection} from '@/contexts/MapContext';
+import {displaySortKey, useMap, useMapboxDraw, useMapContext, useMapSelection} from '@/contexts/MapContext';
 import {AreaProps} from '@/stores/schemas';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import {
@@ -23,6 +23,7 @@ import MapDialog from '../MapDialog';
 export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
   const map = useMap();
   const draw = useMapboxDraw();
+  const {features} = useMapContext();
   const selectedIds = useMapSelection();
   const [name, setName] = useState('');
   const [type, setType] = useState<AreaProps['type']>('draft');
@@ -42,10 +43,12 @@ export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
     if (!map || !draw || selectedIds.length === 0) return;
 
     const feature = draw.get(selectedIds[0])!;
+    const index = features.features.findIndex((f) => f.id === feature.id);
     feature.properties = {
       name,
       type,
       active,
+      sort_key: displaySortKey(index, type, features.features),
     };
     draw.add(feature);
     map.fire(MapboxDraw.constants.events.UPDATE, {features: [feature]});

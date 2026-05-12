@@ -1,4 +1,4 @@
-import {useMapContext} from '@/contexts/MapContext';
+import {withDisplaySortKeys, useMapContext} from '@/contexts/MapContext';
 import type {
   DrawActionableEvent,
   DrawCreateEvent,
@@ -8,7 +8,7 @@ import type {
   MapboxDrawOptions,
 } from '@mapbox/mapbox-gl-draw';
 import MapboxDraw, {type DrawMode} from '@mapbox/mapbox-gl-draw';
-import type {Feature} from 'geojson';
+import type {Feature, FeatureCollection} from 'geojson';
 import type {ControlPosition, IControl} from 'maplibre-gl';
 import {useControl, useMap} from 'maplibre-react-components';
 import {useCallback, useEffect} from 'react';
@@ -46,6 +46,7 @@ export function DrawControl({
       if (e.type === 'draw.create') {
         setFeatures((draft) => {
           draft.features.push(...e.features);
+          draw.set(withDisplaySortKeys(draft as FeatureCollection));
         });
         onFeaturesCreated?.(e.features);
       } else if (e.type === 'draw.update') {
@@ -56,6 +57,7 @@ export function DrawControl({
               draft.features[idx] = updatedFeature;
             }
           }
+          draw.set(withDisplaySortKeys(draft as FeatureCollection));
         });
       } else if (e.type === 'draw.delete') {
         setFeatures((draft) => {

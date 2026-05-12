@@ -20,15 +20,18 @@ import {
 } from '@mui/material';
 import type {Feature, FeatureCollection} from 'geojson';
 import {useState} from 'react';
+import {AsyncDialogProps} from 'react-dialog-async';
 
-interface ImportModalProps {
-  open: boolean;
-  onClose: () => void;
-  features: FeatureCollection | null;
-  onImport: (selectedFeatures: Feature[], clearExisting: boolean) => void;
+export interface UploadModalResult {
+  features: Feature[];
+  clearExisting: boolean;
 }
 
-export function UploadModal({open, onClose, features, onImport}: ImportModalProps) {
+export function UploadModal({
+  isOpen,
+  handleClose,
+  data: features,
+}: AsyncDialogProps<FeatureCollection, UploadModalResult | undefined>) {
   const [selectedFeatures, setSelectedFeatures] = useState<Set<number>>(new Set(features?.features.keys().toArray()));
   const [clearExisting, setClearExisting] = useState(true);
   const [selectAll, setSelectAll] = useState(true);
@@ -56,16 +59,14 @@ export function UploadModal({open, onClose, features, onImport}: ImportModalProp
   };
 
   const handleImport = () => {
-    const featuresToImport = features.features.filter((_, index) => selectedFeatures.has(index));
-    onImport(featuresToImport, clearExisting);
-    onClose();
-    setSelectedFeatures(new Set());
-    setSelectAll(false);
-    setClearExisting(false);
+    handleClose({
+      features: features.features.filter((_, index) => selectedFeatures.has(index)),
+      clearExisting,
+    });
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={isOpen} onClose={() => handleClose(undefined)} maxWidth="md" fullWidth>
       <DialogTitle>
         Import Features
         <Typography variant="subtitle1" component="div">
@@ -77,7 +78,7 @@ export function UploadModal({open, onClose, features, onImport}: ImportModalProp
         <Box sx={{mb: 3}}>
           <FormControlLabel
             control={
-              <Switch checked={clearExisting} onChange={(e) => setClearExisting(e.target.checked)} color="warning" />
+              <Switch checked={clearExisting} onChange={(e) => setClearExisting(e.target.checked)} />
             }
             label={
               <Box>
@@ -135,7 +136,7 @@ export function UploadModal({open, onClose, features, onImport}: ImportModalProp
       </DialogContent>
 
       <DialogActions sx={{px: 3, pb: 3}}>
-        <Button onClick={onClose} sx={{borderRadius: 2}}>
+        <Button onClick={() => handleClose(undefined)} sx={{borderRadius: 2}}>
           Cancel
         </Button>
         <Button

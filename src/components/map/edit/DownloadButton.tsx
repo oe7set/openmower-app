@@ -1,10 +1,10 @@
 'use client';
 
+import ControlButton from '@/components/map/ControlButton';
 import {useMapboxDraw} from '@/contexts/MapContext';
-import {Download as DownloadIcon} from '@mui/icons-material';
-import {Button, type ButtonProps} from '@mui/material';
+import {CloudDownload as DownloadIcon} from '@mui/icons-material';
 
-export function DownloadButton(buttonProps: ButtonProps) {
+export function DownloadButton() {
   const draw = useMapboxDraw();
 
   const downloadFeatures = () => {
@@ -14,7 +14,10 @@ export function DownloadButton(buttonProps: ButtonProps) {
     const dataStr = JSON.stringify(features, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
 
-    const exportFileDefaultName = `map-features-${new Date().toISOString().split('T')[0]}.geojson`;
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}).*/, '$1$2$3-$4$5$6');
+    const exportFileDefaultName = `openmower-map-${timestamp}.geojson`;
 
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
@@ -23,13 +26,12 @@ export function DownloadButton(buttonProps: ButtonProps) {
   };
 
   return (
-    <Button
-      {...buttonProps}
-      startIcon={<DownloadIcon />}
+    <ControlButton
+      position="bottom-right"
+      icon={DownloadIcon}
+      title="Download map"
       onClick={downloadFeatures}
-      disabled={buttonProps.disabled || !draw}
-    >
-      Download
-    </Button>
+      disabled={!draw}
+    />
   );
 }

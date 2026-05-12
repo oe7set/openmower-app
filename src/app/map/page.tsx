@@ -2,17 +2,17 @@
 
 import {MowerMap} from '@/components/map/MowerMap';
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
-import {useMapboxDraw, useMapContext} from '@/contexts/MapContext';
+import {useMapboxDraw, useMapContext, withDisplaySortKeys} from '@/contexts/MapContext';
 import {outerCardStyles} from '@/lib/cardStyles';
 import {useSelectedMower} from '@/stores/mowersStore';
-import {featuresToMap, mapToFeatures} from '@/utils/area-converter';
-import {area as turfArea} from '@turf/area';
-
 import {AreaProps} from '@/stores/schemas';
+import {featuresToMap, mapToFeatures} from '@/utils/area-converter';
 import {CheckCircle as CheckIcon, LocationOn as LocationIcon, PlayArrow as PlayIcon} from '@mui/icons-material';
+import {useTheme} from '@mui/material';
+import {area as turfArea} from '@turf/area';
+import {featureCollection} from '@turf/helpers';
 import {Feature, Polygon} from 'geojson';
 import {useCallback, useEffect, useMemo} from 'react';
-import {useTheme} from '@mui/material';
 
 export function formatAreaSize(squareMeters: number): string {
   return `${Math.round(squareMeters)}m²`;
@@ -30,18 +30,13 @@ export default function MapPage() {
   useEffect(() => {
     if (draw && mapData && !editMode) {
       const features = mapToFeatures(mapData);
-      draw.set(features);
+      draw.set(withDisplaySortKeys(features));
       setFeatures(features, false);
     }
   }, [draw, mapData, editMode, setFeatures]);
 
   const saveMapToMower = useCallback(async () => {
-    try {
-      await rpc?.map.replace(featuresToMap(mapData!, features));
-      // TODO: Show success toast
-    } catch (error) {
-      console.error('Error saving map to mower:', error);
-    }
+    await rpc!.map.replace(featuresToMap(mapData!, features));
   }, [rpc, mapData, features]);
 
   const areas = useMemo(
@@ -49,7 +44,7 @@ export default function MapPage() {
     [features],
   );
   const workingAreas = useMemo(() => areas.filter((area) => area.properties.type === 'mow'), [areas]);
-  const totalWorkingArea = useMemo(() => turfArea({type: 'FeatureCollection', features: workingAreas}), [workingAreas]);
+  const totalWorkingArea = useMemo(() => turfArea(featureCollection(workingAreas)), [workingAreas]);
 
   if (mapData === undefined) {
     return <div>No map data</div>;

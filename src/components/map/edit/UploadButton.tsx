@@ -1,61 +1,47 @@
 'use client';
 
+import ControlButton from '@/components/map/ControlButton';
 import {useMapboxDraw} from '@/contexts/MapContext';
-import {Upload as UploadIcon} from '@mui/icons-material';
-import {Button, type ButtonProps} from '@mui/material';
-import type {Feature, FeatureCollection} from 'geojson';
-import {useRef, useState} from 'react';
+import {CloudUpload as UploadIcon} from '@mui/icons-material';
+import type {FeatureCollection} from 'geojson';
+import {useRef} from 'react';
+import {useDialog} from 'react-dialog-async';
 import {UploadModal} from './UploadModal';
 
-export function UploadButton(buttonProps: ButtonProps) {
+export function UploadButton() {
   const draw = useMapboxDraw();
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [pendingFeatures, setPendingFeatures] = useState<FeatureCollection | null>(null);
+  const uploadModal = useDialog(UploadModal);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const geojson = JSON.parse(e.target?.result as string);
-        setPendingFeatures(geojson);
-        setImportModalOpen(true);
-      } catch (error) {
-        console.error('Error parsing GeoJSON:', error);
-        alert('Invalid GeoJSON file');
-      }
-    };
-    reader.readAsText(file);
+    if (event.target) event.target.value = '';
 
-    // Reset file input
-    if (event.target) {
-      event.target.value = '';
-    }
-  };
-
-  const handleImportFeatures = (selectedFeatures: Feature[], clearExisting: boolean) => {
-    if (!draw) return;
-
-    if (clearExisting) {
-      draw.deleteAll();
+    const text = await file.text();
+    let geojson: FeatureCollection;
+    try {
+      geojson = JSON.parse(text);
+    } catch {
+      console.error('Error parsing GeoJSON');
+      alert('Invalid GeoJSON file');
+      return;
     }
 
-    // Add each selected feature to the map
-    selectedFeatures.forEach((feature) => {
-      draw.add(feature);
-    });
+    const result = await uploadModal.open(geojson);
+    if (!result || !draw) return;
+
+    if (result.clearExisting) draw.deleteAll();
+    result.features.forEach((feature) => draw.add(feature));
   };
 
   return (
     <>
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -63,22 +49,12 @@ export function UploadButton(buttonProps: ButtonProps) {
         onChange={handleFileUpload}
         style={{display: 'none'}}
       />
-
-      <Button
-        {...buttonProps}
-        startIcon={<UploadIcon />}
+      <ControlButton
+        position="bottom-right"
+        icon={UploadIcon}
+        title="Upload map"
         onClick={handleUploadClick}
-        disabled={buttonProps.disabled || !draw}
-      >
-        Upload
-      </Button>
-
-      {/* Import Modal */}
-      <UploadModal
-        open={importModalOpen}
-        onClose={() => setImportModalOpen(false)}
-        features={pendingFeatures}
-        onImport={handleImportFeatures}
+        disabled={!draw}
       />
     </>
   );

@@ -16,7 +16,12 @@ const TYPE_CONFIG: Record<AreaProps['type'], {icon: LucideIcon; color: string; s
 export interface AreaItemProps {
   area: Feature<Polygon, AreaProps>;
   selected?: boolean;
+  hovered?: boolean;
   showDragHandle?: boolean;
+  onSelect?: (id: string, e: React.MouseEvent) => void;
+  onMouseEnter?: React.MouseEventHandler;
+  onMouseLeave?: React.MouseEventHandler;
+  dragCount?: number;
 }
 
 interface SortableItemProps {
@@ -29,7 +34,12 @@ interface SortableItemProps {
 export default function AreaItem({
   area,
   selected = false,
+  hovered = false,
   showDragHandle = false,
+  onSelect,
+  onMouseEnter,
+  onMouseLeave,
+  dragCount,
   ref,
   style,
   listeners,
@@ -39,10 +49,14 @@ export default function AreaItem({
   const theme = useTheme();
   const inactive = area.properties.active === false;
   const {icon: Icon, color, strokeWidth} = TYPE_CONFIG[area.properties.type ?? 'draft'];
+  const isGroupDragPlaceholder = !!dragCount && dragCount > 0;
   return (
     <ListItem
       style={style}
       {...props}
+      onClick={onSelect ? (e) => onSelect(area.id as string, e) : undefined}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       sx={{
         p: 0,
         cursor: 'pointer',
@@ -54,9 +68,11 @@ export default function AreaItem({
             ? theme.palette.mode === 'dark'
               ? theme.palette.secondary.main
               : theme.palette.secondary.dark
-            : undefined,
+            : hovered
+              ? theme.palette.secondary.main
+              : undefined,
         color: dragging || selected ? theme.palette.secondary.contrastText : undefined,
-        opacity: inactive ? 0.5 : 1,
+        opacity: dragCount === 0 ? 0.25 : inactive ? 0.5 : 1,
         touchAction: 'none',
         '&:last-child': {
           borderBottom: 'none',
@@ -68,22 +84,25 @@ export default function AreaItem({
       }}
     >
       <Box sx={{width: '100%', display: 'flex'}}>
-        <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', pl: 2, color}}>
-          <Icon size={18} strokeWidth={strokeWidth} />
+        <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', pl: 2, color: isGroupDragPlaceholder ? undefined : color}}>
+          {!isGroupDragPlaceholder && <Icon size={18} strokeWidth={strokeWidth} />}
         </Box>
         <Box sx={{flex: 1, px: 1.5, py: 1, opacity: dragging ? 0.4 : 1.0}}>
           <Typography variant="h6" fontWeight="600">
-            {area.properties.name ?? 'Unnamed area'}
+            {isGroupDragPlaceholder ? `${dragCount} areas` : (area.properties.name ?? 'Unnamed area')}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {formatAreaSize(turfArea(area.geometry))}
-            {area.properties.type === 'mow' ? ' • Last mowed: Never' : ''}
-          </Typography>
+          {!isGroupDragPlaceholder && (
+            <Typography variant="caption" color="text.secondary">
+              {formatAreaSize(turfArea(area.geometry))}
+              {area.properties.type === 'mow' ? ' • Last mowed: Never' : ''}
+            </Typography>
+          )}
         </Box>
         {showDragHandle && (
           <Box
             ref={ref}
             {...listeners}
+            onClick={(e) => e.stopPropagation()}
             sx={{
               cursor: 'grab',
               display: 'flex',

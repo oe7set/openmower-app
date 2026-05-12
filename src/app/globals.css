@@ -38,6 +38,11 @@ a {
   margin-top: 4px !important;
 }
 
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl:not(:last-child),
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl:not(:last-child) {
+  margin-bottom: 4px !important;
+}
+
 .maplibregl-ctrl-top-left .maplibregl-ctrl + .maplibregl-ctrl-spaced {
   margin-top: 20px !important;
 }
@@ -143,4 +148,3 @@ a {
   cursor: -moz-grab;
   cursor: -webkit-grab;
 }
-

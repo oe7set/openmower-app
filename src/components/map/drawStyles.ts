@@ -21,16 +21,26 @@ export const drawStyles = [
     id: 'polygon-fill',
     type: 'fill',
     filter: ['all', ['==', '$type', 'Polygon']],
+    layout: {
+      'fill-sort-key': ['to-number', ['get', 'user_sort_key'], 0],
+    },
     paint: {
       'fill-color': type_color,
       'fill-outline-color': type_color,
-      'fill-opacity': ['case', ['==', ['get', 'active'], 'true'], 0.8, 0.4],
+      'fill-opacity': [
+        'case',
+        ['boolean', ['get', 'user_hovered'], false],
+        0.65,
+        ['==', ['get', 'active'], 'true'],
+        0.8,
+        0.4,
+      ],
     },
   },
   // Lines
   // Polygon
   //   Matches Lines AND Polygons
-  //   Active state defines color
+  //   Active state defines color; hover shows dashed orange outline
   {
     id: 'gl-draw-lines',
     type: 'line',
@@ -38,17 +48,29 @@ export const drawStyles = [
     layout: {
       'line-cap': 'round',
       'line-join': 'round',
+      'line-sort-key': ['to-number', ['get', 'user_sort_key'], 0],
     },
     paint: {
       'line-color': [
         'case',
+        ['boolean', ['get', 'user_hovered'], false],
+        orange,
         ['==', ['get', 'active'], 'true'],
         orange,
         ['==', ['get', 'user_active'], false],
         gray,
         green,
       ],
-      'line-dasharray': ['case', ['==', ['get', 'user_active'], false], ['literal', [3, 3]], ['literal', [1, 0]]],
+      'line-dasharray': [
+        'case',
+        ['boolean', ['get', 'user_hovered'], false],
+        ['literal', [3, 3]],
+        ['==', ['get', 'active'], 'true'],
+        ['literal', [1, 0]],
+        ['==', ['get', 'user_active'], false],
+        ['literal', [3, 3]],
+        ['literal', [1, 0]],
+      ],
       'line-width': 1,
     },
   },

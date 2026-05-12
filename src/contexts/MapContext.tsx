@@ -1,6 +1,7 @@
 import MapboxDraw, {type DrawMode} from '@mapbox/mapbox-gl-draw';
+import {featureCollection} from '@turf/helpers';
 import {Feature, FeatureCollection} from 'geojson';
-import {Draft} from 'immer';
+import {Draft, produce} from 'immer';
 import {useMap as useMapLibreMap} from 'maplibre-react-components';
 import {createContext, Dispatch, SetStateAction, useCallback, useContext, useEffect, useRef, useState} from 'react';
 import {Updater, useImmer} from 'use-immer';
@@ -27,6 +28,8 @@ interface MapContextType {
   canRedo: boolean;
   undo: () => FeatureCollection | null;
   redo: () => FeatureCollection | null;
+  hoveredId: string | null;
+  setHoveredId: Dispatch<SetStateAction<string | null>>;
 }
 
 interface SplitPolygonWorkflow {
@@ -38,16 +41,30 @@ type Workflow = SplitPolygonWorkflow;
 
 const MAX_HISTORY_STEPS = 10;
 
+export function displaySortKey(idx: number, type: string | undefined, features: Feature[]): number {
+  return (type === 'obstacle' ? features.length : 0) + idx;
+}
+
+export function withDisplaySortKeys(fc: FeatureCollection): FeatureCollection {
+  return produce(fc, (draft) => {
+    draft.features.forEach((f, i) => {
+      f.properties ??= {};
+      f.properties.sort_key = displaySortKey(i, f.properties.type, fc.features);
+    });
+  });
+}
+
 export const MapContext = createContext<MapContextType | undefined>(undefined);
 
 export const MapContextProvider = ({id, children}: {id: string; children: React.ReactNode}) => {
   // Note that here is where we keep the correct order of features (mapbox-gl-draw doesn't maintain it).
-  const [features, setFeaturesImmer] = useImmer<FeatureCollection>({type: 'FeatureCollection', features: []});
+  const [features, setFeaturesImmer] = useImmer<FeatureCollection>(featureCollection([]));
   const [editMode, setEditMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>(MapboxDraw.constants.modes.STATIC);
   const [drawWorkflow, setDrawWorkflow] = useImmer<Workflow | null>(null);
   const [trashEnabled, setTrashEnabled] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [past, setPast] = useState<FeatureCollection[]>([]);
   const [future, setFuture] = useState<FeatureCollection[]>([]);
 
@@ -115,6 +132,8 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
         canRedo: future.length > 0,
         undo,
         redo,
+        hoveredId,
+        setHoveredId,
       }}
     >
       {children}
@@ -138,6 +157,11 @@ export function useMap() {
 export function useMapboxDraw() {
   const map = useMap();
   return map?._controls.find((control) => control instanceof MapboxDraw) ?? null;
+}
+
+export function useMapHover(): [string | null, Dispatch<SetStateAction<string | null>>] {
+  const {hoveredId, setHoveredId} = useMapContext();
+  return [hoveredId, setHoveredId];
 }
 
 export function useMapSelection() {
