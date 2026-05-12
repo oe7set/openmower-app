@@ -1,6 +1,7 @@
 'use client';
 
 import {useMapboxDraw, useMapContext, useMapHover} from '@/contexts/MapContext';
+import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {fallbackDatum, MapData, type AreaProps} from '@/stores/schemas';
 import {useUiStore} from '@/stores/uiStore';
@@ -54,12 +55,12 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const [hoveredId, setHoveredId] = useMapHover();
   const currentState = useSelectedMower((s) => s?.state.current_state);
   const isDocked = useSelectedMower((s) => s?.state.is_charging ?? false);
-  // Whether mower_logic exposes the start_recording action — only true when
-  // the FSM is in IDLE/READY. Used to gate the prominent "Start area
-  // recording" map control so it doesn't show during MOWING/DOCKING.
-  const canStartRecording = useSelectedMower((s) =>
-    s?.isActionEnabled('mower_logic/start_recording') ?? false,
-  );
+  // Pure state-gate. xbot_monitoring re-publishes action IDs prefixed by the
+  // owning behavior (e.g. `mower_logic:idle/start_area_recording`), so an
+  // `isActionEnabled` check would mis-match unless we also filtered against
+  // the running behavior. Reading `current_state === 'IDLE'` is equivalent
+  // and resilient if `actions/json` has not landed yet on a fresh connect.
+  const canStartRecording = currentState === 'IDLE';
   const plannedPath = useSelectedMower((s) => s?.plannedPath ?? []);
   const coveragePath = useSelectedMower((s) => s?.coveragePath ?? []);
   const mowingTrail = useSelectedMower((s) => s?.mowingTrail ?? []);
@@ -319,7 +320,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         ) : (
           <>
             <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
-            {canStartRecording && currentState !== 'AREA_RECORDING' && (
+            {canStartRecording && (
               <ControlButton
                 position="top-left"
                 spaced
@@ -327,7 +328,11 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
                 title="Start area recording — drive the mower around the perimeter to capture a new mowing area"
                 onClick={() => {
                   const {mowers, selected} = useMowersStore.getState();
-                  mowers[selected]?.publishAction('mower_logic/start_recording');
+                  mowers[selected]?.publishAction(MOWER_ACTIONS.startAreaRecording);
+                }}
+                style={{
+                  color: theme.palette.primary.main,
+                  boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
                 }}
               />
             )}

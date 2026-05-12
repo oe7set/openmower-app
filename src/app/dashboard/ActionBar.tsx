@@ -2,6 +2,7 @@
 
 import {useToast} from '@/hooks/useToast';
 import {outerCardStyles} from '@/lib/cardStyles';
+import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {
   Home as HomeIcon,
@@ -14,16 +15,17 @@ import {
 import {Box, Button, Card, CardContent, Typography, useTheme} from '@mui/material';
 import {ReactNode, useState} from 'react';
 
-// Action IDs come from xbot_monitoring's actions/json topic and are formatted
-// "<node_prefix>/<action_id>". The buttons here are mapped to the IDs that
-// mower_logic actually registers — see open_mower_ros/src/mower_logic/.
+// `setEmergency` ('mower_logic/set_emergency') is intentionally kept here
+// even though the backend does not implement it as an action handler — the
+// button currently has no effect. Removing it would be a UX regression
+// without a functional alternative; fixing it requires backend work.
 const ACTIONS = {
-  start: 'mower_logic/start_mowing',
-  pause: 'mower_logic/pause',
-  continue: 'mower_logic/continue',
-  skip: 'mower_logic/skip_area',
-  abort: 'mower_logic/abort_mowing',
-  resetEmergency: 'mower_logic/reset_emergency',
+  start: MOWER_ACTIONS.startMowing,
+  pause: MOWER_ACTIONS.pause,
+  continue: MOWER_ACTIONS.continueMowing,
+  skip: MOWER_ACTIONS.skipArea,
+  abort: MOWER_ACTIONS.abortMowing,
+  resetEmergency: MOWER_ACTIONS.resetEmergency,
   setEmergency: 'mower_logic/set_emergency',
 } as const;
 

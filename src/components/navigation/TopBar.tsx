@@ -1,6 +1,7 @@
 'use client';
 
 import {useToast} from '@/hooks/useToast';
+import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useConnectionDiagnostic, useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore, type ThemeMode} from '@/stores/uiStore';
 import {Brightness4, DarkMode, LightMode, Menu as MenuIcon, SettingsBrightness, Warning} from '@mui/icons-material';
@@ -56,7 +57,7 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
     if (!mower) return;
     setResetting(true);
     try {
-      mower.publishAction('mower_logic/reset_emergency');
+      mower.publishAction(MOWER_ACTIONS.resetEmergency);
       toast.success('Emergency reset sent');
       setEmergencyConfirmOpen(false);
     } catch (e) {

@@ -4,10 +4,22 @@ import VirtualJoystick from '@/components/map/teleop/VirtualJoystick';
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useToast} from '@/hooks/useToast';
 import {useTeleop} from '@/hooks/useTeleop';
+import {MOWER_ACTIONS, type MowerActionId} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore} from '@/stores/uiStore';
-import {GpsFixed as GpsIcon, NearMe as HeadingIcon, Speed as SpeedIcon, Stop as StopIcon} from '@mui/icons-material';
 import {
+  Cancel as CancelIcon,
+  ExitToApp as ExitIcon,
+  GpsFixed as GpsIcon,
+  Home as HomeIcon,
+  NearMe as HeadingIcon,
+  PlayArrow as PlayIcon,
+  Speed as SpeedIcon,
+  Stop as StopIcon,
+  Warning as WarningIcon,
+} from '@mui/icons-material';
+import {
+  Alert,
   Box,
   Button,
   Card,
@@ -22,7 +34,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import {useState} from 'react';
+import {ReactNode, useState} from 'react';
 
 // Manual driving page. Stays usable independently of the map editor — the
 // joystick was previously only available during AREA_RECORDING, which made
@@ -50,6 +62,14 @@ export default function DrivePage() {
     } finally {
       setKilling(false);
     }
+  };
+
+  const sendAction = (label: string, actionId: MowerActionId) => {
+    const {mowers, selected} = useMowersStore.getState();
+    const mower = mowers[selected];
+    if (!mower) return;
+    mower.publishAction(actionId);
+    toast.success(`${label} sent`);
   };
 
   const stateLabel = state?.current_state ?? 'UNKNOWN';
@@ -126,6 +146,87 @@ export default function DrivePage() {
           </Card>
         </Box>
 
+        {/* Mode-switch — gated purely on current_state. The joystick stream is
+            silently discarded by mower_logic in any state where
+            redirect_joystick() returns false (everything except AREA_RECORDING),
+            so this card is the user's lever to make the joystick effective. */}
+        <Card sx={{mt: 2}}>
+          <CardContent>
+            <Typography variant="h6" fontWeight="600" sx={{mb: 1.5}}>
+              Mode
+            </Typography>
+            <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1}}>
+              {state?.emergency && (
+                <ModeBtn
+                  label="Reset emergency"
+                  icon={<WarningIcon />}
+                  color="error"
+                  onClick={() => sendAction('Reset emergency', MOWER_ACTIONS.resetEmergency)}
+                />
+              )}
+              {stateLabel === 'IDLE' && (
+                <ModeBtn
+                  label="Enter recording"
+                  icon={<PlayIcon />}
+                  color="success"
+                  onClick={() => sendAction('Enter recording', MOWER_ACTIONS.startAreaRecording)}
+                />
+              )}
+              {stateLabel === 'AREA_RECORDING' && (
+                <>
+                  <ModeBtn
+                    label="Stop recording"
+                    icon={<StopIcon />}
+                    color="warning"
+                    variant="outlined"
+                    onClick={() => sendAction('Stop recording', MOWER_ACTIONS.arStopRecording)}
+                  />
+                  <ModeBtn
+                    label="Exit recording"
+                    icon={<ExitIcon />}
+                    color="inherit"
+                    variant="outlined"
+                    onClick={() => sendAction('Exit recording', MOWER_ACTIONS.arExit)}
+                  />
+                </>
+              )}
+              {stateLabel === 'MOWING' && (
+                <ModeBtn
+                  label="Return home"
+                  icon={<HomeIcon />}
+                  color="secondary"
+                  variant="outlined"
+                  onClick={() => sendAction('Return home', MOWER_ACTIONS.abortMowing)}
+                />
+              )}
+              {stateLabel === 'DOCKING' && (
+                <ModeBtn
+                  label="Abort docking"
+                  icon={<CancelIcon />}
+                  color="warning"
+                  variant="outlined"
+                  onClick={() => sendAction('Abort docking', MOWER_ACTIONS.abortDocking)}
+                />
+              )}
+              {stateLabel === 'UNDOCKING' && (
+                <ModeBtn
+                  label="Abort undocking"
+                  icon={<CancelIcon />}
+                  color="warning"
+                  variant="outlined"
+                  onClick={() => sendAction('Abort undocking', MOWER_ACTIONS.abortUndocking)}
+                />
+              )}
+            </Box>
+            {stateLabel !== 'AREA_RECORDING' && !state?.emergency && (
+              <Alert severity="info" sx={{mt: 2}}>
+                The joystick only moves the mower while it&apos;s in <b>AREA_RECORDING</b>. Click
+                <i> Enter recording</i> to take manual control.
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Joystick — gets the rest of the viewport */}
         <Card sx={{mt: 2, py: 6, display: 'flex', justifyContent: 'center'}}>
           <Box
@@ -169,6 +270,29 @@ export default function DrivePage() {
         </DialogActions>
       </Dialog>
     </Page>
+  );
+}
+
+interface ModeBtnProps {
+  label: string;
+  icon: ReactNode;
+  color: 'primary' | 'success' | 'warning' | 'info' | 'error' | 'inherit' | 'secondary';
+  variant?: 'contained' | 'outlined';
+  onClick: () => void;
+}
+
+function ModeBtn({label, icon, color, variant = 'contained', onClick}: ModeBtnProps) {
+  return (
+    <Button
+      size="medium"
+      variant={variant}
+      color={color}
+      startIcon={icon}
+      onClick={onClick}
+      sx={{flex: '0 1 auto', minWidth: 160}}
+    >
+      {label}
+    </Button>
   );
 }
 
