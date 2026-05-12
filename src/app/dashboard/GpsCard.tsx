@@ -35,7 +35,12 @@ export default function GpsCard() {
   const headingValid = useSelectedMower((s) => s?.state.pose.heading_valid ?? false);
   const fixType = useSelectedMower((s) => s?.state.gps_fix_type);
   const sats = useSelectedMower((s) => s?.state.gps_satellite_count);
-  const pdop = useSelectedMower((s) => s?.state.gps_pdop);
+  const pdopRaw = useSelectedMower((s) => s?.state.gps_pdop);
+  // PDOP of exactly 0 is the backend's "not reported" sentinel.
+  const pdop = pdopRaw && pdopRaw > 0 ? pdopRaw : undefined;
+  // xbot_positioning emits 999 m as a sentinel when no recent RTK fix is
+  // available; nothing real ever exceeds a few meters.
+  const posAccuracyShown = posAccuracy > 0 && posAccuracy < 100;
 
   const color = gpsColor(gps);
   const Icon = gps >= 75 ? GpsFixed : gps >= 25 ? GpsNotFixed : GpsOff;
@@ -76,7 +81,7 @@ export default function GpsCard() {
               Position accuracy
             </Typography>
             <Typography variant="body2" fontWeight="600">
-              {posAccuracy.toFixed(2)} m
+              {posAccuracyShown ? `${posAccuracy.toFixed(2)} m` : '—'}
             </Typography>
           </Box>
           <Box sx={{textAlign: 'right'}}>
