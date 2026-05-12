@@ -1,7 +1,7 @@
 'use client';
 
 import {useMapboxDraw, useMapContext} from '@/contexts/MapContext';
-import {useSelectedMower} from '@/stores/mowersStore';
+import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {fallbackDatum, MapData, type AreaProps} from '@/stores/schemas';
 import {useUiStore} from '@/stores/uiStore';
 import type {AreaFeature} from '@/types/geojson';
@@ -13,7 +13,7 @@ import {Box, Dialog, useMediaQuery, useTheme, type SxProps} from '@mui/material'
 import bbox from '@turf/bbox';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
-import {ActivityIcon, FocusIcon, GlobeIcon, GridIcon, LayoutListIcon, PencilIcon, RouteIcon, SquareIcon} from 'lucide-react';
+import {ActivityIcon, FocusIcon, GlobeIcon, GridIcon, LayoutListIcon, PencilIcon, PlayCircleIcon, RouteIcon, SquareIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
@@ -51,6 +51,12 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const draw = useMapboxDraw();
   const currentState = useSelectedMower((s) => s?.state.current_state);
   const isDocked = useSelectedMower((s) => s?.state.is_charging ?? false);
+  // Whether mower_logic exposes the start_recording action — only true when
+  // the FSM is in IDLE/READY. Used to gate the prominent "Start area
+  // recording" map control so it doesn't show during MOWING/DOCKING.
+  const canStartRecording = useSelectedMower((s) =>
+    s?.isActionEnabled('mower_logic/start_recording') ?? false,
+  );
   const plannedPath = useSelectedMower((s) => s?.plannedPath ?? []);
   const coveragePath = useSelectedMower((s) => s?.coveragePath ?? []);
   const mowingTrail = useSelectedMower((s) => s?.mowingTrail ?? []);
@@ -213,7 +219,21 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         {editMode ? (
           <EditControls areas={areas} saveMapToMower={saveMapToMower} />
         ) : (
-          <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
+          <>
+            <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
+            {canStartRecording && currentState !== 'AREA_RECORDING' && (
+              <ControlButton
+                position="top-left"
+                spaced
+                icon={PlayCircleIcon}
+                title="Start area recording — drive the mower around the perimeter to capture a new mowing area"
+                onClick={() => {
+                  const {mowers, selected} = useMowersStore.getState();
+                  mowers[selected]?.publishAction('mower_logic/start_recording');
+                }}
+              />
+            )}
+          </>
         )}
 
         {/* Right controls */}

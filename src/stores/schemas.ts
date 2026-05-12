@@ -63,6 +63,14 @@ export const stateSchema = z.object({
     x: z.number(),
     y: z.number(),
   }),
+  // Backend R9a — extended GPS + WLAN telemetry. All optional so the schema
+  // continues to parse on older xbot_monitoring builds that don't publish
+  // these fields yet.
+  gps_fix_type: z.number().int().min(0).max(5).optional(),
+  gps_satellite_count: z.number().int().nonnegative().optional(),
+  gps_hdop: z.number().nonnegative().optional(),
+  wifi_signal_dbm: z.number().optional(),
+  wifi_link_quality: z.number().min(0).max(1).optional(),
 });
 
 export type State = z.infer<typeof stateSchema>;

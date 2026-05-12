@@ -297,6 +297,87 @@
           }
         }
       }
+    },
+    {
+      "name": "telemetry.list_sessions",
+      "summary": "Enumerate recorded mowing telemetry sessions.",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "List of recorded sessions with summary metadata.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "start_ts", "end_ts", "sample_count"],
+                "properties": {
+                  "id": {"type": "string"},
+                  "start_ts": {"type": "number", "description": "Epoch seconds."},
+                  "end_ts": {"type": "number"},
+                  "sample_count": {"type": "integer"},
+                  "file_size_bytes": {"type": "integer"},
+                  "duration_s": {"type": "number"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "telemetry.get_session",
+      "summary": "Fetch the recorded telemetry samples for a single mowing session.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "description": "Session id from telemetry.list_sessions.",
+          "required": true,
+          "schema": {"type": "string"}
+        },
+        {
+          "name": "stride",
+          "description": "Decimation factor (return every N-th sample). Default 1 = full resolution.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 1}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Sample stream for the session.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ts", "x", "y"],
+                "properties": {
+                  "ts": {"type": "number"},
+                  "x": {"type": "number"},
+                  "y": {"type": "number"},
+                  "yaw": {"type": "number"},
+                  "pitch": {"type": "number"},
+                  "roll": {"type": "number"},
+                  "gps_fix_type": {"type": "integer"},
+                  "gps_satellite_count": {"type": "integer"},
+                  "gps_hdop": {"type": "number"},
+                  "wifi_dbm": {"type": "number"},
+                  "wifi_q": {"type": "number"},
+                  "mow_motor_current": {"type": "number"},
+                  "mow_motor_temp": {"type": "number"},
+                  "esc_temp": {"type": "number"},
+                  "battery_voltage": {"type": "number"}
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "components": {

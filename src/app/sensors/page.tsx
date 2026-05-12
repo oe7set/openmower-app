@@ -3,11 +3,25 @@
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useSelectedMower} from '@/stores/mowersStore';
 import type {SensorInfo} from '@/stores/schemas';
-import {Sensors as SensorsIcon, Timeline as TimelineIcon} from '@mui/icons-material';
+import {GpsFixed as GpsFixIcon, Sensors as SensorsIcon, Timeline as TimelineIcon} from '@mui/icons-material';
 import {Alert, Box} from '@mui/material';
 import {useMemo, useState} from 'react';
 import SensorGauge from './SensorGauge';
 import SensorHistoryDialog from './SensorHistoryDialog';
+
+// R9a — match the labels used in dashboard/GpsCard so the user sees
+// consistent terminology across the app.
+function fixTypeShort(t: number | undefined): string {
+  if (t === undefined) return '—';
+  switch (t) {
+    case 5: return 'RTK Fixed';
+    case 4: return 'RTK Float';
+    case 3: return 'DGPS';
+    case 2: return '3D';
+    case 1: return '2D';
+    default: return 'No Fix';
+  }
+}
 
 // Cosmetic ordering — keep the most-watched sensors at the top of the grid.
 // Anything not listed falls through to the natural order from the backend.
@@ -36,6 +50,7 @@ function sortInfos(a: SensorInfo, b: SensorInfo): number {
 export default function SensorsPage() {
   const mowerId = useSelectedMower((s) => s?.id);
   const sensorInfos = useSelectedMower((s) => s?.sensorInfos ?? []);
+  const fixType = useSelectedMower((s) => s?.state.gps_fix_type);
   const sortedInfos = useMemo(() => [...sensorInfos].sort(sortInfos), [sensorInfos]);
 
   const [openSensor, setOpenSensor] = useState<SensorInfo | null>(null);
@@ -45,6 +60,9 @@ export default function SensorsPage() {
       <PageHeader title="Sensors" subtitle="Live readings from the mower's onboard hardware">
         <HeaderStat icon={<SensorsIcon />} value={sensorInfos.length} label="Discovered" />
         <HeaderStat icon={<TimelineIcon />} value="60s" label="History buffer" />
+        {fixType !== undefined && (
+          <HeaderStat icon={<GpsFixIcon />} value={fixTypeShort(fixType)} label="GPS fix" />
+        )}
       </PageHeader>
 
       <PageContent>

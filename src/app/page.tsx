@@ -5,6 +5,7 @@ import BatteryCard from './dashboard/BatteryCard';
 import GpsCard from './dashboard/GpsCard';
 import PoseCard from './dashboard/PoseCard';
 import StateCard from './dashboard/StateCard';
+import WifiCard from './dashboard/WifiCard';
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useMowers, useSelectedMower} from '@/stores/mowersStore';
 import {BatteryFull, CheckCircle, GpsFixed, Router} from '@mui/icons-material';
@@ -36,6 +37,7 @@ export default function Dashboard() {
           <StateCard />
           <BatteryCard />
           <GpsCard />
+          <WifiCard />
           <PoseCard />
         </Box>
 
