@@ -18,11 +18,25 @@ export function useTeleop({cap = 1}: UseTeleopOptions = {}) {
   const capRef = useRef(cap);
   capRef.current = cap;
 
-  const publish = useCallback(() => {
-    const {mowers, selected} = useMowersStore.getState();
+  // Track which mower the active interval is publishing to, so a mower switch
+  // can fire a final zero at the *previous* mower instead of orphaning it
+  // mid-motion. Without this, the user driving robot A and selecting robot B
+  // in the dropdown leaves robot A driving with its last commanded velocity
+  // until the next setVelocity(0) — which may never come if the joystick is
+  // released after the switch.
+  const activeMowerIndex = useRef<number | null>(null);
+
+  const publishTo = useCallback((mowerIndex: number, vx: number, vz: number) => {
+    const {mowers} = useMowersStore.getState();
     const c = Math.max(0, Math.min(1, capRef.current));
-    mowers[selected]?.publishTeleop(vel.current.vx * c, vel.current.vz * c);
+    mowers[mowerIndex]?.publishTeleop(vx * c, vz * c);
   }, []);
+
+  const publishCurrent = useCallback(() => {
+    const {selected} = useMowersStore.getState();
+    activeMowerIndex.current = selected;
+    publishTo(selected, vel.current.vx, vel.current.vz);
+  }, [publishTo]);
 
   const setVelocity = useCallback(
     (vx: number, vz: number) => {
@@ -32,24 +46,40 @@ export function useTeleop({cap = 1}: UseTeleopOptions = {}) {
       const wasMoving = interval.current !== null;
 
       if (moving && !wasMoving) {
-        publish();
-        interval.current = setInterval(publish, PUBLISH_INTERVAL_MS);
+        publishCurrent();
+        interval.current = setInterval(publishCurrent, PUBLISH_INTERVAL_MS);
       } else if (!moving && wasMoving) {
         clearInterval(interval.current!);
         interval.current = null;
-        publish();
+        publishCurrent();
       }
     },
-    [publish],
+    [publishCurrent],
   );
+
+  // Watch the selected mower; if it changes while we're driving, send a final
+  // zero to the previous mower and re-arm the interval against the new one.
+  const selected = useMowersStore((s) => s.selected);
+  useEffect(() => {
+    const previous = activeMowerIndex.current;
+    if (previous !== null && previous !== selected) {
+      publishTo(previous, 0, 0);
+    }
+    if (interval.current !== null) {
+      // Re-bind the interval to the new mower without losing the current
+      // velocity (the user may still be holding the joystick).
+      activeMowerIndex.current = selected;
+    }
+  }, [selected, publishTo]);
 
   useEffect(() => {
     return () => {
       if (interval.current !== null) clearInterval(interval.current);
+      const last = activeMowerIndex.current;
       vel.current = {vx: 0, vz: 0};
-      publish();
+      if (last !== null) publishTo(last, 0, 0);
     };
-  }, []);
+  }, [publishTo]);
 
   return {setVelocity};
 }

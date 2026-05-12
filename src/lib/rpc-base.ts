@@ -70,6 +70,11 @@ export default class OpenMowerRpcBase {
     const json = JSON.parse(payload);
     const request = this.pendingRequests.get(json.id);
     if (request === undefined) return;
+    // Cancel the timeout and drop the entry before resolving — otherwise the
+    // 30s timer keeps running and eventually rejects into a stale closure,
+    // which surfaces as a phantom "RPC timeout" toast on idle UIs.
+    clearTimeout(request.timeout);
+    this.pendingRequests.delete(json.id);
     if ('error' in json) {
       request.reject(new Error(json.error.message));
     } else {

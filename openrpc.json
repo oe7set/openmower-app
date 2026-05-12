@@ -148,12 +148,15 @@
       ],
       "result": {
         "name": "result",
-        "description": "Number of changes applied.",
+        "description": "Counts plus the OM_* keys that were actually written (`updated_keys`) and those that were dropped because they have no writable YAML mapping (`skipped_keys`). The frontend uses `updated_keys` to highlight saved fields and `skipped_keys` to surface a warning when a request mentions an unknown or read-only key.",
         "schema": {
           "type": "object",
           "properties": {
-            "updated": {"type": "integer"}
-          }
+            "updated": {"type": "integer"},
+            "updated_keys": {"type": "array", "items": {"type": "string"}},
+            "skipped_keys": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["updated", "updated_keys", "skipped_keys"]
         }
       }
     },

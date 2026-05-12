@@ -12,13 +12,13 @@ export type Capabilities = z.infer<typeof capabilitiesSchema>;
 // Actions
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Older xbot_monitoring builds publish `enabled` as 0/1; current builds emit a
-// real boolean. Accept both so the app doesn't break on either.
-const looseBoolean = z.union([
-  z.boolean(),
-  z.literal(0).transform(() => false),
-  z.literal(1).transform(() => true),
-]);
+// Older xbot_monitoring builds publish `enabled` and the various has_* flags
+// as numbers; current builds emit native booleans. Accept any number and treat
+// non-zero as true. Restricting this to literal 0 / 1 used to reject the whole
+// payload (Zod throws on the union) when stale firmware happened to put a
+// garbage bit in a has_* field — losing the entire sensor_infos topic is much
+// worse than displaying a slightly off flag.
+const looseBoolean = z.union([z.boolean(), z.number().transform((v) => v !== 0)]);
 
 export const actionSchema = z.object({
   action_id: z.string(),

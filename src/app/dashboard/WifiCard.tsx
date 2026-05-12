@@ -6,6 +6,9 @@ import {Wifi as WifiIcon, WifiOff as WifiOffIcon} from '@mui/icons-material';
 import {Box, Card, CardContent, LinearProgress, Typography, useTheme} from '@mui/material';
 
 // Maps a WLAN signal in dBm to a 0..100 quality. -50dBm = great, -90dBm = bad.
+// dbm === 0 is the firmware's "N/A" sentinel (Ethernet-only host or the
+// /proc/net/wireless entry was missing) — callers must filter that out before
+// invoking this function, otherwise 0 dBm would naively map to 100 %.
 function dbmToQuality(dbm: number): number {
   if (dbm >= -50) return 100;
   if (dbm <= -90) return 0;
@@ -28,10 +31,19 @@ export default function WifiCard() {
   // pops in.
   if (dbm === undefined && link === undefined) return null;
 
-  const quality = link !== undefined
-    ? Math.round(link * 100)
-    : dbm !== undefined
-      ? dbmToQuality(dbm)
+  // Firmware uses `wifi_signal_dbm === 0` plus `wifi_link_quality === 0` to
+  // signal "no WLAN interface" (e.g. Ethernet-only mowers, or
+  // /proc/net/wireless missing). Treat that as N/A and hide the card —
+  // otherwise dbmToQuality(0) maps to 100 % and the dashboard claims a perfect
+  // signal where there is none.
+  const dbmNa = dbm === undefined || dbm === 0;
+  const linkNa = link === undefined || link === 0;
+  if (dbmNa && linkNa) return null;
+
+  const quality = !linkNa
+    ? Math.round((link as number) * 100)
+    : !dbmNa
+      ? dbmToQuality(dbm as number)
       : 0;
   const color = qualityColor(quality);
   const Icon = quality > 0 ? WifiIcon : WifiOffIcon;
@@ -57,14 +69,14 @@ export default function WifiCard() {
           sx={{height: 10, borderRadius: 5, mb: 2, '& .MuiLinearProgress-bar': {borderRadius: 5}}}
         />
 
-        {dbm !== undefined && (
+        {(!dbmNa || !linkNa) && (
           <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 2}}>
             <Box>
               <Typography variant="caption" color="text.secondary">
                 Signal
               </Typography>
               <Typography variant="body2" fontWeight="600">
-                {dbm} dBm
+                {!dbmNa ? `${dbm} dBm` : '—'}
               </Typography>
             </Box>
             <Box sx={{textAlign: 'right'}}>
@@ -72,7 +84,7 @@ export default function WifiCard() {
                 Link quality
               </Typography>
               <Typography variant="body2" fontWeight="600">
-                {link !== undefined ? `${(link * 100).toFixed(0)}%` : '—'}
+                {!linkNa ? `${((link as number) * 100).toFixed(0)}%` : '—'}
               </Typography>
             </Box>
           </Box>
