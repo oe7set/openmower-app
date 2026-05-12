@@ -145,12 +145,14 @@ export const sensorInfoSchema = z.object({
   value_type: sensorValueTypeSchema.default('UNKNOWN'),
   value_description: sensorValueDescriptionSchema.default('UNKNOWN'),
   unit: z.string().default(''),
-  has_min_max: z.boolean().default(false),
+  // Older xbot_monitoring builds publish has_* flags as 0/1 numbers; current
+  // builds emit native booleans. looseBoolean accepts both shapes.
+  has_min_max: looseBoolean.default(false),
   min_value: z.number().default(0),
   max_value: z.number().default(0),
-  has_critical_low: z.boolean().default(false),
+  has_critical_low: looseBoolean.default(false),
   lower_critical_value: z.number().default(0),
-  has_critical_high: z.boolean().default(false),
+  has_critical_high: looseBoolean.default(false),
   upper_critical_value: z.number().default(0),
 });
 export const sensorInfosSchema = z.array(sensorInfoSchema);
