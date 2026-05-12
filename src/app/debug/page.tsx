@@ -171,9 +171,19 @@ function VersionSection({backend}: {backend: VersionInfo | null}) {
           {backend ? (
             backend.version
           ) : (
-            <Typography component="span" color="text.disabled" fontSize="inherit">
-              not received yet
-            </Typography>
+            <Tooltip
+              title="The mower's xbot_monitoring should publish version/json with retain=true. If you only see this after a backend restart, the publish is likely not retained."
+              arrow
+            >
+              <Typography
+                component="span"
+                color="text.disabled"
+                fontSize="inherit"
+                sx={{textDecoration: 'underline dotted', cursor: 'help'}}
+              >
+                not received yet
+              </Typography>
+            </Tooltip>
           )}
         </Typography>
         <Typography variant="body2" color="text.secondary" fontWeight={500}>
