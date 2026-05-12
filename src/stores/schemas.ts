@@ -52,13 +52,16 @@ export const stateSchema = z.object({
   current_path: z.number(),
   current_path_index: z.number(),
   current_sub_state: z.string(),
-  emergency: numericBoolean,
+  // robot_state/json bool fields — newer xbot_monitoring builds emit native
+  // JSON booleans (nlohmann::json serialises C++ bool that way), older builds
+  // historically emitted 0/1. looseBoolean accepts both.
+  emergency: looseBoolean,
   gps_percentage: gpsPercentage,
-  is_charging: numericBoolean,
+  is_charging: looseBoolean,
   pose: z.object({
     heading: z.number(),
     heading_accuracy: z.number(),
-    heading_valid: numericBoolean,
+    heading_valid: looseBoolean,
     pos_accuracy: z.number(),
     x: z.number(),
     y: z.number(),
@@ -71,6 +74,7 @@ export const stateSchema = z.object({
   gps_pdop: z.number().nonnegative().optional(),
   wifi_signal_dbm: z.number().optional(),
   wifi_link_quality: z.number().min(0).max(1).optional(),
+  rain_detected: looseBoolean.optional(),
 });
 
 export type State = z.infer<typeof stateSchema>;

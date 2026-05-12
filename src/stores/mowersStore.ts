@@ -1,7 +1,7 @@
 import type {MowerConfig} from '@/components/types';
 import {OpenMowerRpc} from '@/lib/rpc';
+import {hostFromMqttUrl, TeleopSocket} from '@/lib/teleopSocket';
 import {generateId} from '@/utils/area-utils';
-import {BSON} from 'bson';
 import {immerable} from 'immer';
 import mqtt, {MqttClient} from 'mqtt';
 import {useMemo} from 'react';
@@ -100,6 +100,11 @@ class Mower {
   // Map of partial topic ('robot_state/json' etc.) -> Date.now() when the
   // most recent payload arrived. Stays empty until the first message lands.
   lastSeen: Record<string, number> = {};
+  // xbot_remote takes joystick output via a separate WebSocket on :9002 — the
+  // MQTT teleop topic that ships with xbot_monitoring is not wired through to
+  // mower_logic, so MQTT teleop never moves the mower. The legacy Flutter app
+  // uses the same WebSocket path. Created lazily per mower in loadMowers().
+  teleopSocket: TeleopSocket | null = null;
 
   constructor(config: MowerConfig, mqttClient: MqttClient) {
     this.id = config.id;
@@ -109,6 +114,8 @@ class Mower {
     this.mqttClient = mqttClient;
     this.mqttPrefix = config.mqtt_prefix;
     this.rpc = new OpenMowerRpc(mqttClient, config.mqtt_prefix);
+    const host = hostFromMqttUrl(config.mqtt_ws_url);
+    this.teleopSocket = host ? new TeleopSocket(host) : null;
   }
 
   hasCapability(capability: string, minLevel: number = 1): boolean {
@@ -117,8 +124,7 @@ class Mower {
   }
 
   publishTeleop(vx: number, vz: number) {
-    const payload = BSON.serialize({vx, vz});
-    this.mqttClient.publish(this.mqttPrefix + 'teleop', Buffer.from(payload.buffer));
+    this.teleopSocket?.send(vx, vz);
   }
 
   // Sends an action_id to the mower. The ROS xbot_monitoring node forwards it
