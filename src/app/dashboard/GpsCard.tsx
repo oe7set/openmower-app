@@ -35,7 +35,7 @@ export default function GpsCard() {
   const headingValid = useSelectedMower((s) => s?.state.pose.heading_valid ?? false);
   const fixType = useSelectedMower((s) => s?.state.gps_fix_type);
   const sats = useSelectedMower((s) => s?.state.gps_satellite_count);
-  const hdop = useSelectedMower((s) => s?.state.gps_hdop);
+  const pdop = useSelectedMower((s) => s?.state.gps_pdop);
 
   const color = gpsColor(gps);
   const Icon = gps >= 75 ? GpsFixed : gps >= 25 ? GpsNotFixed : GpsOff;
@@ -70,7 +70,7 @@ export default function GpsCard() {
           sx={{height: 10, borderRadius: 5, mb: 2, '& .MuiLinearProgress-bar': {borderRadius: 5}}}
         />
 
-        <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 2, mb: (sats !== undefined || hdop !== undefined) ? 1.5 : 0}}>
+        <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 2, mb: (sats !== undefined || pdop !== undefined) ? 1.5 : 0}}>
           <Box>
             <Typography variant="caption" color="text.secondary">
               Position accuracy
@@ -93,7 +93,7 @@ export default function GpsCard() {
           </Box>
         </Box>
 
-        {(sats !== undefined || hdop !== undefined) && (
+        {(sats !== undefined || pdop !== undefined) && (
           <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 2, pt: 1.5, borderTop: `1px solid ${theme.palette.divider}`}}>
             {sats !== undefined && (
               <Box>
@@ -105,13 +105,13 @@ export default function GpsCard() {
                 </Typography>
               </Box>
             )}
-            {hdop !== undefined && (
+            {pdop !== undefined && (
               <Box sx={{textAlign: 'right'}}>
                 <Typography variant="caption" color="text.secondary">
-                  HDOP
+                  PDOP
                 </Typography>
                 <Typography variant="body2" fontWeight="600">
-                  {hdop.toFixed(2)}
+                  {pdop.toFixed(2)}
                 </Typography>
               </Box>
             )}

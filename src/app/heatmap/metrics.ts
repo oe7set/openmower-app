@@ -1,9 +1,11 @@
 import {inferno, rdYlGn} from './colors';
 
-// Single sample as it arrives from telemetry.get_session — all fields beyond
-// {ts, x, y} are optional because older recorder builds may not capture every
-// metric. Keep the shape forgiving so the page never crashes on partial data.
-export interface Sample {
+// Single sample as it arrives from telemetry.get_session. The recorder writes
+// known telemetry fields plus the latest value for every configured sensor
+// (default Sabo set: om_mow_motor_current, om_mow_motor_temp, om_left_esc_temp,
+// om_right_esc_temp, om_v_battery). Sensor IDs vary per build, so we type the
+// rest as an open record and reach for known IDs in the metric extractors.
+interface KnownSample {
   ts: number;
   x: number;
   y: number;
@@ -12,14 +14,11 @@ export interface Sample {
   roll?: number;
   gps_fix_type?: number;
   gps_satellite_count?: number;
-  gps_hdop?: number;
+  gps_pdop?: number;
   wifi_dbm?: number;
   wifi_q?: number;
-  mow_motor_current?: number;
-  mow_motor_temp?: number;
-  esc_temp?: number;
-  battery_voltage?: number;
 }
+export type Sample = KnownSample & Record<string, number | undefined>;
 
 // Each metric can be toggled on/off and produces a per-sample colour. Some
 // metrics require a rolling-window calculation (IMU jerk) — those see the
@@ -57,8 +56,9 @@ export type MetricId =
 function gpsScore(s: Sample): number {
   const fix = (s.gps_fix_type ?? 0) / 5; // 5 = RTK Fixed
   const sats = Math.min(1, (s.gps_satellite_count ?? 0) / 24);
-  const hdop = s.gps_hdop !== undefined ? Math.max(0, 1 - s.gps_hdop / 5) : 0.5;
-  return Math.min(fix, sats * 0.5 + hdop * 0.5);
+  // PDOP < 2 = excellent, < 5 = ok. Same /5 normalisation as before.
+  const pdop = s.gps_pdop !== undefined ? Math.max(0, 1 - s.gps_pdop / 5) : 0.5;
+  return Math.min(fix, sats * 0.5 + pdop * 0.5);
 }
 
 function wifiScore(s: Sample): number {
@@ -138,21 +138,28 @@ export const METRICS: Record<MetricId, MetricDef> = {
     label: 'Mow motor current',
     description: 'Higher current = denser grass or obstruction. Useful for finding tough spots.',
     ramp: 'inferno',
-    value: (s) => s.mow_motor_current,
+    value: (s) => s.om_mow_motor_current,
   },
   mow_temp: {
     id: 'mow_temp',
     label: 'Mow motor temp',
     description: 'Hotspots indicate prolonged high load.',
     ramp: 'inferno',
-    value: (s) => s.mow_motor_temp,
+    value: (s) => s.om_mow_motor_temp,
   },
   esc_temp: {
     id: 'esc_temp',
     label: 'ESC temperature',
-    description: 'Drive ESC temperatures. Spikes correlate with steep terrain.',
+    // The Sabo build records both drive ESCs separately — show whichever ran
+    // hotter at each sample so a single layer covers both motors.
+    description: 'Drive ESC temperatures (max of left/right). Spikes correlate with steep terrain.',
     ramp: 'inferno',
-    value: (s) => s.esc_temp,
+    value: (s) => {
+      const l = s.om_left_esc_temp;
+      const r = s.om_right_esc_temp;
+      if (l === undefined && r === undefined) return undefined;
+      return Math.max(l ?? -Infinity, r ?? -Infinity);
+    },
   },
   battery: {
     id: 'battery',
@@ -160,7 +167,7 @@ export const METRICS: Record<MetricId, MetricDef> = {
     description: 'Drops under load — useful to spot voltage sag in difficult sections.',
     ramp: 'rdYlGn',
     goodGreen: true,
-    value: (s) => s.battery_voltage,
+    value: (s) => s.om_v_battery,
   },
   composite: {
     id: 'composite',

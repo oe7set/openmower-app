@@ -68,7 +68,7 @@ export const stateSchema = z.object({
   // these fields yet.
   gps_fix_type: z.number().int().min(0).max(5).optional(),
   gps_satellite_count: z.number().int().nonnegative().optional(),
-  gps_hdop: z.number().nonnegative().optional(),
+  gps_pdop: z.number().nonnegative().optional(),
   wifi_signal_dbm: z.number().optional(),
   wifi_link_quality: z.number().min(0).max(1).optional(),
 });

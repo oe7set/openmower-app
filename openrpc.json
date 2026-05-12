@@ -356,6 +356,7 @@
               "items": {
                 "type": "object",
                 "required": ["ts", "x", "y"],
+                "additionalProperties": {"type": "number"},
                 "properties": {
                   "ts": {"type": "number"},
                   "x": {"type": "number"},
@@ -365,16 +366,13 @@
                   "roll": {"type": "number"},
                   "gps_fix_type": {"type": "integer"},
                   "gps_satellite_count": {"type": "integer"},
-                  "gps_hdop": {"type": "number"},
+                  "gps_pdop": {"type": "number"},
                   "wifi_dbm": {"type": "number"},
-                  "wifi_q": {"type": "number"},
-                  "mow_motor_current": {"type": "number"},
-                  "mow_motor_temp": {"type": "number"},
-                  "esc_temp": {"type": "number"},
-                  "battery_voltage": {"type": "number"}
+                  "wifi_q": {"type": "number"}
                 }
               }
-            }
+            },
+            "truncated": {"type": "boolean"}
           }
         }
       }

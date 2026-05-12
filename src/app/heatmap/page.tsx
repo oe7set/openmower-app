@@ -317,15 +317,19 @@ export default function HeatmapPage() {
                     <div>{new Date(s.ts * 1000).toLocaleTimeString()}</div>
                     <div style={{opacity: 0.7}}>x={s.x.toFixed(2)}, y={s.y.toFixed(2)}</div>
                     {s.gps_fix_type !== undefined && (
-                      <div>GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · HDOP {s.gps_hdop?.toFixed(2) ?? '—'}</div>
+                      <div>GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · PDOP {s.gps_pdop?.toFixed(2) ?? '—'}</div>
                     )}
                     {(s.wifi_dbm !== undefined || s.wifi_q !== undefined) && (
                       <div>WLAN: {s.wifi_dbm ?? '—'}dBm ({((s.wifi_q ?? 0) * 100).toFixed(0)}%)</div>
                     )}
-                    {s.mow_motor_current !== undefined && <div>Mow current: {s.mow_motor_current.toFixed(2)}A</div>}
-                    {s.mow_motor_temp !== undefined && <div>Mow temp: {s.mow_motor_temp.toFixed(1)}°C</div>}
-                    {s.esc_temp !== undefined && <div>ESC temp: {s.esc_temp.toFixed(1)}°C</div>}
-                    {s.battery_voltage !== undefined && <div>Battery: {s.battery_voltage.toFixed(2)}V</div>}
+                    {s.om_mow_motor_current !== undefined && <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>}
+                    {s.om_mow_motor_temp !== undefined && <div>Mow temp: {s.om_mow_motor_temp.toFixed(1)}°C</div>}
+                    {(s.om_left_esc_temp !== undefined || s.om_right_esc_temp !== undefined) && (
+                      <div>
+                        ESC: L {s.om_left_esc_temp?.toFixed(1) ?? '—'}°C · R {s.om_right_esc_temp?.toFixed(1) ?? '—'}°C
+                      </div>
+                    )}
+                    {s.om_v_battery !== undefined && <div>Battery: {s.om_v_battery.toFixed(2)}V</div>}
                   </Box>
                 );
               })}
