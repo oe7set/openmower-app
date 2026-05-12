@@ -47,19 +47,29 @@ export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconne
 // Topics the dashboard depends on for "is the mower alive?". Tracked
 // separately from arbitrary topic subscriptions so the connection banner
 // surfaces only the things the user actually waits for.
-export const EXPECTED_TOPICS = [
-  'capabilities/json',
-  'robot_state/json',
-  'map/json',
-  'actions/json',
-  'sensor_infos/json',
+// Topic spec — `live: false` means the topic is published retained on change
+// only (e.g. capabilities, map, actions). For those we only care if the
+// payload ever arrived (presence check); we don't track staleness because
+// silence is normal. `live: true` topics publish at ~1Hz and stale-detection
+// is meaningful.
+export interface TopicSpec {
+  topic: string;
+  live: boolean;
+}
+
+export const EXPECTED_TOPICS: readonly TopicSpec[] = [
+  {topic: 'capabilities/json', live: false},
+  {topic: 'robot_state/json', live: true},
+  {topic: 'map/json', live: false},
+  {topic: 'actions/json', live: false},
+  {topic: 'sensor_infos/json', live: false},
 ] as const;
 
-export type ExpectedTopic = (typeof EXPECTED_TOPICS)[number];
+export type ExpectedTopic = (typeof EXPECTED_TOPICS)[number]['topic'];
 
 // 10 seconds without a topic update on a connected broker counts as stale —
-// matches the typical 1Hz publish cadence of the ROS bridges with comfortable
-// headroom.
+// matches the typical 1Hz publish cadence of the live ROS bridges with
+// comfortable headroom. Only applied to topics with `live: true`.
 const STALE_THRESHOLD_MS = 10_000;
 
 class Mower {
@@ -413,12 +423,15 @@ export function useConnectionDiagnostic(): ConnectionDiagnostic {
     const now = Date.now();
     const missing: ExpectedTopic[] = [];
     const stale: {topic: ExpectedTopic; ageMs: number}[] = [];
-    for (const t of EXPECTED_TOPICS) {
-      const seen = lastSeen?.[t];
+    for (const spec of EXPECTED_TOPICS) {
+      const seen = lastSeen?.[spec.topic];
       if (seen === undefined) {
-        missing.push(t);
-      } else if (now - seen > STALE_THRESHOLD_MS) {
-        stale.push({topic: t, ageMs: now - seen});
+        missing.push(spec.topic);
+      } else if (spec.live && now - seen > STALE_THRESHOLD_MS) {
+        // Retained topics (live: false) publish on change only — silence is
+        // normal, so we never flag them as stale once the initial payload
+        // arrived.
+        stale.push({topic: spec.topic, ageMs: now - seen});
       }
     }
     let status: ConnectionDiagnostic['status'];

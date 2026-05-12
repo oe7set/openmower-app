@@ -25,7 +25,7 @@ import merge from 'lodash.merge';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {FormProvider, useForm, useFormContext, useWatch} from 'react-hook-form';
 import {parse as parseYaml} from 'yaml';
-import {buildEnvVarMap, flattenToEnvVars} from './envVarMapping';
+import {buildEnvVarMap, buildEnvVarReverseMap, flattenToEnvVars, unflattenFromEnvVars} from './envVarMapping';
 import {FieldsetField} from './fields/FieldsetField';
 import RestartServiceButton from './RestartServiceButton';
 import {SettingsContext} from './SettingsContext';
@@ -61,8 +61,17 @@ export function SettingsForm() {
       setError(null);
 
       try {
-        const [schema, defaultsFiles] = await Promise.all([rpc.meta.config.schema(), rpc.meta.config.defaults()]);
-        const defaults = RELEVANT_DEFAULTS.reduce<Record<string, unknown>>((acc, path) => {
+        // get() may not be available on older backends — tolerate failure so
+        // the form still renders against YAML defaults.
+        const [schema, defaultsFiles, currentRaw] = await Promise.all([
+          rpc.meta.config.schema(),
+          rpc.meta.config.defaults(),
+          (rpc.meta.config.get() as Promise<unknown>).catch((e) => {
+            console.warn('meta.config.get() failed; falling back to YAML defaults only:', e);
+            return {} as Record<string, string>;
+          }),
+        ]);
+        const yamlDefaults = RELEVANT_DEFAULTS.reduce<Record<string, unknown>>((acc, path) => {
           const yaml = defaultsFiles[path];
           if (!yaml) return acc;
           const parsed = parseYaml(yaml);
@@ -85,6 +94,20 @@ export function SettingsForm() {
         // so save-time flattening can resolve every leaf without re-walking
         // the form structure.
         const envVarMap = buildEnvVarMap(mergedSchema);
+
+        // …and the reverse map so we can take the live env-var snapshot from
+        // mower_config.sh (rpc.meta.config.get) and rebuild the nested values
+        // tree the form is rendered against.
+        const reverseMap = buildEnvVarReverseMap(mergedSchema);
+        const liveValues = unflattenFromEnvVars(
+          (currentRaw ?? {}) as Record<string, unknown>,
+          reverseMap,
+        );
+
+        // Live values win over YAML defaults — that's what the user actually
+        // configured. The "Reset to default" affordance still compares against
+        // YAML so the user sees what's diverged from the system baseline.
+        const defaults = merge({}, yamlDefaults, liveValues);
 
         const newFormState = {
           fields: formFields as unknown as Field[],

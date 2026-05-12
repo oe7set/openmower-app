@@ -424,9 +424,10 @@ function TopicsSection({mowerId, lastSeen}: {mowerId: string; lastSeen: Record<s
   useMowersStore((s) => s.lastSeenTick);
   const theme = useTheme();
   const now = Date.now();
-  const rows: {topic: ExpectedTopic; lastMs?: number}[] = EXPECTED_TOPICS.map((topic) => ({
-    topic,
-    lastMs: lastSeen[topic],
+  const rows: {topic: ExpectedTopic; live: boolean; lastMs?: number}[] = EXPECTED_TOPICS.map((spec) => ({
+    topic: spec.topic,
+    live: spec.live,
+    lastMs: lastSeen[spec.topic],
   }));
 
   return (
@@ -466,15 +467,17 @@ function TopicsSection({mowerId, lastSeen}: {mowerId: string; lastSeen: Record<s
           </tr>
         </thead>
         <tbody>
-          {rows.map(({topic, lastMs}) => {
+          {rows.map(({topic, live, lastMs}) => {
             const ageMs = lastMs !== undefined ? now - lastMs : undefined;
+            // Retained topics never go "stale" — once received they count as
+            // live indefinitely until the next publish.
             const status =
-              ageMs === undefined ? 'never' : ageMs > 10_000 ? 'stale' : 'live';
+              ageMs === undefined ? 'never' : live && ageMs > 10_000 ? 'stale' : 'live';
             const color: 'default' | 'success' | 'warning' | 'error' =
               status === 'live' ? 'success' : status === 'stale' ? 'warning' : 'error';
             return (
               <tr key={`${mowerId}-${topic}`}>
-                <td className="topic">{topic}</td>
+                <td className="topic">{topic}{!live && <span style={{opacity: 0.5, marginLeft: 6, fontSize: '0.7rem'}}>(retained)</span>}</td>
                 <td>
                   <Chip label={status} size="small" color={color} sx={{fontWeight: 600}} />
                 </td>

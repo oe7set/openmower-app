@@ -32,7 +32,10 @@ export default class OpenMowerRpcBase {
 
   constructor(private mqtt: MqttClient, private prefix: string) {}
 
-  public call<T>(method: string, params?: object): Promise<T> {
+  // 30s default — settings schemas (~29KB), large logs.tail responses, and
+  // the first call after a fresh broker connect can all exceed 10s. Callers
+  // that know they're hitting a fast RPC can override.
+  public call<T>(method: string, params?: object, timeoutMs: number = 30_000): Promise<T> {
     const id = generateId();
     this.mqtt.publish(
       this.prefix + 'rpc/request',
@@ -57,7 +60,7 @@ export default class OpenMowerRpcBase {
           const err = new Error('RPC timeout');
           rpcErrorListeners.forEach((l) => l({method, message: err.message}));
           reject(err);
-        }, 10000),
+        }, timeoutMs),
       };
       this.pendingRequests.set(id, request);
     });

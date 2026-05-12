@@ -14,8 +14,18 @@ type SchemaNode = {
   properties?: Record<string, SchemaNode>;
   allOf?: Array<{then?: SchemaNode; else?: SchemaNode}>;
   'x-environment-variable'?: string;
+  type?: string | string[];
   [k: string]: unknown;
 };
+
+export type SchemaScalarType = 'string' | 'number' | 'integer' | 'boolean';
+
+export interface EnvVarInfo {
+  /** Dotted property path that identifies the leaf in the form's value tree. */
+  path: string;
+  /** Best-effort scalar type so string values from the backend can be coerced. */
+  type: SchemaScalarType;
+}
 
 // Recursively walk the schema and build a `propertyPath → envVarName` map.
 // Property path uses dots (e.g. "important_settings.OM_DATUM_LAT").
@@ -73,4 +83,95 @@ export function flattenToEnvVars(
   };
   walk(values, []);
   return out;
+}
+
+// Reverse of buildEnvVarMap: produces {envVar: {path, type}} so we can take
+// the backend's flat env-var snapshot (rpc.meta.config.get()) and rebuild the
+// nested values object that the form renders against. The captured `type`
+// lets us coerce strings ("0.13") into numbers/booleans before merging.
+export function buildEnvVarReverseMap(schema: unknown): Record<string, EnvVarInfo> {
+  const out: Record<string, EnvVarInfo> = {};
+  walkReverse(schema as SchemaNode, [], out);
+  return out;
+}
+
+function walkReverse(schema: SchemaNode | undefined, prefix: string[], out: Record<string, EnvVarInfo>): void {
+  if (!schema || typeof schema !== 'object') return;
+
+  if (typeof schema['x-environment-variable'] === 'string' && prefix.length > 0) {
+    const envVar = schema['x-environment-variable'] as string;
+    out[envVar] = {
+      path: prefix.join('.'),
+      type: scalarType(schema.type),
+    };
+  }
+
+  if (schema.properties) {
+    for (const [key, child] of Object.entries(schema.properties)) {
+      walkReverse(child, [...prefix, key], out);
+    }
+  }
+
+  if (Array.isArray(schema.allOf)) {
+    for (const branch of schema.allOf) {
+      if (branch?.then) walkReverse(branch.then, prefix, out);
+      if (branch?.else) walkReverse(branch.else, prefix, out);
+    }
+  }
+}
+
+function scalarType(t: string | string[] | undefined): SchemaScalarType {
+  const single = Array.isArray(t) ? t.find((x) => x !== 'null') : t;
+  if (single === 'number' || single === 'integer' || single === 'boolean') return single;
+  return 'string';
+}
+
+// Take the {ENV_VAR: stringValue} snapshot from rpc.meta.config.get() and
+// rebuild the nested form value tree. Unknown env-vars (not in the schema)
+// are silently dropped — they exist in mower_config.sh but the UI doesn't
+// expose them. Coercion is best-effort: invalid numbers fall through as
+// strings so the form doesn't choke on weird input.
+export function unflattenFromEnvVars(
+  envSnapshot: Record<string, unknown>,
+  reverseMap: Record<string, EnvVarInfo>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+
+  for (const [envVar, raw] of Object.entries(envSnapshot)) {
+    const info = reverseMap[envVar];
+    if (!info) continue;
+
+    const coerced = coerceValue(raw, info.type);
+    setNested(out, info.path, coerced);
+  }
+
+  return out;
+}
+
+function coerceValue(raw: unknown, type: SchemaScalarType): unknown {
+  if (raw === undefined || raw === null) return raw;
+  const s = typeof raw === 'string' ? raw : String(raw);
+  if (type === 'number' || type === 'integer') {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : s;
+  }
+  if (type === 'boolean') {
+    if (s === 'true' || s === '1' || s === 'True') return true;
+    if (s === 'false' || s === '0' || s === 'False' || s === '') return false;
+    return s;
+  }
+  return s;
+}
+
+function setNested(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split('.');
+  let cur: Record<string, unknown> = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (!(key in cur) || typeof cur[key] !== 'object' || cur[key] === null || Array.isArray(cur[key])) {
+      cur[key] = {};
+    }
+    cur = cur[key] as Record<string, unknown>;
+  }
+  cur[parts[parts.length - 1]] = value;
 }
