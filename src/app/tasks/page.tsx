@@ -30,13 +30,52 @@ import {useCallback, useEffect, useState} from 'react';
 import ScheduleEditor, {type Schedule} from './ScheduleEditor';
 import {DEFAULT_RRULE_PARTS, partsToRrule} from './rrule';
 
-const EMPTY_SCHEDULE: Schedule = {
-  name: '',
-  enabled: true,
-  areas: [],
-  rrule: partsToRrule(DEFAULT_RRULE_PARTS),
-  duration_minutes: 60,
+// Resolve the browser's IANA zone (e.g. 'Europe/Vienna'). Falls back to UTC
+// on the rare engines that don't expose a name — the scheduler accepts that.
+// TODO: this hard-wires the schedule timezone to whatever zone the browser
+// happens to be in when a schedule is created. That is fine for the common
+// case (mower owner edits from home), but breaks for travelling owners and
+// for headless edits. Move the timezone to a per-mower config param or surface
+// a picker in the editor so the choice is explicit instead of implicit.
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+function emptySchedule(): Schedule {
+  return {
+    name: '',
+    enabled: true,
+    areas: [],
+    rrule: partsToRrule(DEFAULT_RRULE_PARTS),
+    duration_minutes: 60,
+    timezone: detectTimezone(),
+  };
+}
+
+const SKIP_LABELS: Record<NonNullable<Schedule['last_skip_reason']>, string> = {
+  no_state: 'Skipped: mower offline',
+  emergency: 'Skipped: emergency stop',
+  not_idle: 'Skipped: mower busy',
+  charging: 'Skipped: charging',
+  rain: 'Skipped: rain detected',
 };
+
+function formatNextRun(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export default function TasksPage() {
   const theme = useTheme();
@@ -129,7 +168,7 @@ export default function TasksPage() {
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
-                onClick={() => setEditing({...EMPTY_SCHEDULE})}
+                onClick={() => setEditing(emptySchedule())}
                 disabled={!rpc}
               >
                 New
@@ -168,19 +207,35 @@ export default function TasksPage() {
                   >
                     <ListItemText
                       primary={
-                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
                           <Typography variant="body1" fontWeight="600">
                             {s.name || '(unnamed)'}
                           </Typography>
                           {s.areas.length > 0 && (
                             <Chip size="small" label={`${s.areas.length} area${s.areas.length === 1 ? '' : 's'}`} />
                           )}
+                          {s.last_skip_reason && (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              label={SKIP_LABELS[s.last_skip_reason]}
+                            />
+                          )}
                         </Box>
                       }
                       secondary={
-                        <Typography variant="caption" sx={{fontFamily: 'monospace'}}>
-                          {s.rrule} · {s.duration_minutes} min
-                        </Typography>
+                        <Box component="span" sx={{display: 'block'}}>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{fontFamily: 'monospace', display: 'block'}}
+                          >
+                            {s.rrule} · {s.duration_minutes} min · {s.timezone}
+                          </Typography>
+                          <Typography component="span" variant="caption" color="text.secondary">
+                            Next run: {formatNextRun(s.next_run)}
+                          </Typography>
+                        </Box>
                       }
                     />
                   </ListItem>

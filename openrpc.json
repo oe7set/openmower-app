@@ -385,14 +385,18 @@
     "schemas": {
       "Schedule": {
         "type": "object",
-        "required": ["name", "enabled", "areas", "rrule", "duration_minutes"],
+        "required": ["name", "enabled", "areas", "rrule", "duration_minutes", "timezone"],
         "properties": {
           "id": {"type": "string", "description": "Generated server-side when omitted."},
           "name": {"type": "string"},
           "enabled": {"type": "boolean"},
           "areas": {"type": "array", "items": {"type": "integer"}},
-          "rrule": {"type": "string", "description": "iCal RRULE string."},
+          "rrule": {"type": "string", "description": "iCal RRULE string (FREQ/BYDAY/BYHOUR/BYMINUTE)."},
           "duration_minutes": {"type": "integer", "minimum": 1},
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone name the rrule is interpreted in (e.g. 'Europe/Vienna'). Defaults to 'UTC' on the server when missing for legacy entries."
+          },
           "weather": {
             "type": "object",
             "properties": {"skip_if_rain": {"type": "boolean"}}
@@ -403,6 +407,23 @@
               "angle_offset": {"type": "number"},
               "rotate_by_days": {"type": "integer"}
             }
+          },
+          "next_run": {
+            "type": "string",
+            "description": "Read-only. ISO 8601 timestamp (with offset) of the upcoming occurrence. Omitted when the schedule is disabled or has no future occurrence."
+          },
+          "last_fired_at": {
+            "type": "string",
+            "description": "Read-only. ISO 8601 timestamp of the last successful firing. Omitted when the schedule has never fired."
+          },
+          "last_skip_reason": {
+            "type": "string",
+            "enum": ["no_state", "emergency", "not_idle", "charging", "rain"],
+            "description": "Read-only. Reason the most recent due occurrence was skipped. Omitted when no skip has been recorded."
+          },
+          "last_skip_at": {
+            "type": "string",
+            "description": "Read-only. ISO 8601 timestamp of the most recent skip. Omitted when no skip has been recorded."
           }
         }
       }

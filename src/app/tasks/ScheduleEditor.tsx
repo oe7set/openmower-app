@@ -31,8 +31,14 @@ export interface Schedule {
   areas: number[];
   rrule: string;
   duration_minutes: number;
+  timezone: string;
   weather?: {skip_if_rain?: boolean};
   pattern?: {angle_offset?: number; rotate_by_days?: number};
+  // Read-only fields populated by the scheduler.
+  next_run?: string | null;
+  last_fired_at?: string | null;
+  last_skip_reason?: 'no_state' | 'emergency' | 'not_idle' | 'charging' | 'rain' | null;
+  last_skip_at?: string | null;
 }
 
 interface ScheduleEditorProps {
@@ -187,6 +193,13 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
               onChange={(e) => update({weather: {skip_if_rain: e.target.checked}})}
             />
             <Typography variant="body2">Skip if rain detected</Typography>
+          </Box>
+
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
+            <Chip size="small" label={`Timezone: ${draft.timezone}`} />
+            <Typography variant="caption" color="text.secondary">
+              Times above are interpreted in this zone.
+            </Typography>
           </Box>
 
           <Typography variant="caption" color="text.disabled" sx={{fontFamily: 'monospace', wordBreak: 'break-all'}}>
