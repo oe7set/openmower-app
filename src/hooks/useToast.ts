@@ -1,5 +1,5 @@
 import {useSnackbar, type VariantType} from 'notistack';
-import {useCallback} from 'react';
+import {useCallback, useMemo} from 'react';
 
 interface ToastApi {
   success: (message: string) => void;
@@ -9,6 +9,11 @@ interface ToastApi {
   show: (message: string, variant?: VariantType) => void;
 }
 
+// The returned API object is memoised so callers can safely list the toast
+// in useEffect/useCallback dependency arrays without re-triggering on every
+// render. Without this, any effect that depends on `toast` re-runs on each
+// render and can drive infinite update loops in screens that call setState
+// from those effects.
 export function useToast(): ToastApi {
   const {enqueueSnackbar} = useSnackbar();
 
@@ -19,11 +24,14 @@ export function useToast(): ToastApi {
     [enqueueSnackbar],
   );
 
-  return {
-    success: (m) => show(m, 'success'),
-    info: (m) => show(m, 'info'),
-    warning: (m) => show(m, 'warning'),
-    error: (m) => show(m, 'error'),
-    show,
-  };
+  return useMemo<ToastApi>(
+    () => ({
+      success: (m) => show(m, 'success'),
+      info: (m) => show(m, 'info'),
+      warning: (m) => show(m, 'warning'),
+      error: (m) => show(m, 'error'),
+      show,
+    }),
+    [show],
+  );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import {Page, PageContent, PageHeader} from '@/components/page';
-import {useToast} from '@/hooks/useToast';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {fallbackDatum, type MapData} from '@/stores/schemas';
 import bbox from '@turf/bbox';
@@ -29,7 +28,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import {mapStyles} from '@/components/map/mapStyles';
 import HeatmapLayer from './HeatmapLayer';
@@ -60,19 +59,22 @@ const INITIAL_STRIDE = 4;
 
 export default function HeatmapPage() {
   const theme = useTheme();
-  const toast = useToast();
   const rpc = useSelectedMower((s) => s?.rpc);
   const datum: MapData['datum'] = useSelectedMower((s) => s?.map.datum);
   const hasCap = useSelectedMower((s) => s?.hasCapability('telemetry.list_sessions') ?? false);
 
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Sample cache so re-toggling a session doesn't refetch.
   const samplesRef = useRef<Map<string, Sample[]> | null>(null);
   if (samplesRef.current === null) samplesRef.current = new Map<string, Sample[]>();
-  const [, forceTick] = useState(0);
+  // Bump on every successful fetchSamples so the fit-bounds effect re-runs
+  // even though samplesRef itself is mutated in place.
+  const [samplesVersion, setSamplesVersion] = useState(0);
   const [loadingSamples, setLoadingSamples] = useState<Set<string>>(new Set());
+  const [sampleErrors, setSampleErrors] = useState<Record<string, string>>({});
   const [metric, setMetric] = useState<MetricId>('gps');
   const [hoverIdxBySession, setHoverIdxBySession] = useState<Record<string, number | null>>({});
   const mapRef = useRef<MlMap>(null);
@@ -80,35 +82,46 @@ export default function HeatmapPage() {
   const refreshSessions = useCallback(async () => {
     if (!rpc) return;
     setLoadingSessions(true);
+    setSessionsError(null);
     try {
       const res = (await rpc.telemetry.list_sessions()) as unknown as {sessions?: SessionMeta[]};
       const list = (res?.sessions ?? []).slice().sort((a, b) => b.start_ts - a.start_ts);
       setSessions(list);
     } catch (e) {
-      toast.error(`Could not load sessions: ${(e as Error).message}`);
+      setSessionsError((e as Error).message || 'Unknown error');
       setSessions([]);
     } finally {
       setLoadingSessions(false);
     }
-  }, [rpc, toast]);
+  }, [rpc]);
 
+  // Guarded against re-entry: only auto-load until we have a result. Manual
+  // refresh stays available via the sidebar button. Without this guard the
+  // effect would re-fire whenever any of its deps churn (e.g. on mount under
+  // React Strict Mode) and spam the broker with list_sessions calls.
   useEffect(() => {
-    if (hasCap && rpc) refreshSessions();
-  }, [hasCap, rpc, refreshSessions]);
+    if (hasCap && rpc && sessions === null && !loadingSessions) refreshSessions();
+  }, [hasCap, rpc, sessions, loadingSessions, refreshSessions]);
 
   const fetchSamples = useCallback(
     async (id: string) => {
       if (!rpc) return;
       if (samplesRef.current!.has(id)) return;
       setLoadingSamples((prev) => new Set(prev).add(id));
+      setSampleErrors((prev) => {
+        if (!(id in prev)) return prev;
+        const next = {...prev};
+        delete next[id];
+        return next;
+      });
       try {
         const res = (await rpc.telemetry.get_session({id, stride: INITIAL_STRIDE})) as unknown as {
           samples?: Sample[];
         };
         samplesRef.current!.set(id, res?.samples ?? []);
-        forceTick((n) => n + 1);
+        setSamplesVersion((v) => v + 1);
       } catch (e) {
-        toast.error(`Failed to load session ${id}: ${(e as Error).message}`);
+        setSampleErrors((prev) => ({...prev, [id]: (e as Error).message || 'Unknown error'}));
       } finally {
         setLoadingSamples((prev) => {
           const next = new Set(prev);
@@ -117,7 +130,7 @@ export default function HeatmapPage() {
         });
       }
     },
-    [rpc, toast],
+    [rpc],
   );
 
   const toggleSession = (id: string) => {
@@ -133,7 +146,9 @@ export default function HeatmapPage() {
     });
   };
 
-  // Fit map to the union of selected sessions.
+  // Fit map to the union of selected sessions. samplesVersion is included so
+  // the effect re-runs when fetchSamples populates samplesRef asynchronously
+  // (the ref mutation alone is invisible to React).
   useEffect(() => {
     if (!mapRef.current) return;
     const datumRef = datum ?? fallbackDatum;
@@ -157,7 +172,7 @@ export default function HeatmapPage() {
       ],
       {padding: 60, duration: 600},
     );
-  }, [selected, datum]);
+  }, [selected, datum, samplesVersion]);
 
   if (!hasCap) {
     return (
@@ -193,30 +208,68 @@ export default function HeatmapPage() {
                   {loadingSessions ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                 </IconButton>
               </Box>
+              {sessionsError && (
+                <Alert
+                  severity="error"
+                  variant="outlined"
+                  sx={{mb: 1}}
+                  action={
+                    <IconButton
+                      size="small"
+                      onClick={refreshSessions}
+                      disabled={loadingSessions}
+                      aria-label="Retry loading sessions"
+                    >
+                      <RefreshIcon fontSize="small" />
+                    </IconButton>
+                  }
+                >
+                  Could not load sessions: {sessionsError}
+                </Alert>
+              )}
               {sessions === null && loadingSessions && (
                 <Box sx={{display: 'flex', justifyContent: 'center', py: 3}}>
                   <CircularProgress size={20} />
                 </Box>
               )}
-              {sessions && sessions.length === 0 && (
+              {sessions && sessions.length === 0 && !sessionsError && (
                 <Typography variant="body2" color="text.secondary" sx={{py: 2, textAlign: 'center'}}>
                   No telemetry sessions recorded yet.
                 </Typography>
               )}
               <List dense disablePadding sx={{maxHeight: 'calc(100vh - 320px)', overflow: 'auto'}}>
-                {sessions?.map((s) => (
-                  <ListItem key={s.id} disablePadding secondaryAction={loadingSamples.has(s.id) ? <CircularProgress size={14} /> : null}>
-                    <ListItemButton dense onClick={() => toggleSession(s.id)}>
-                      <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
-                      <ListItemText
-                        primary={new Date(s.start_ts * 1000).toLocaleString()}
-                        secondary={`${formatDuration(s.duration_s ?? s.end_ts - s.start_ts)} · ${s.sample_count} pts`}
-                        primaryTypographyProps={{variant: 'body2', noWrap: true}}
-                        secondaryTypographyProps={{variant: 'caption'}}
-                      />
-                    </ListItemButton>
-                  </ListItem>
-                ))}
+                {sessions?.map((s) => {
+                  const err = sampleErrors[s.id];
+                  const secondary = loadingSamples.has(s.id) ? (
+                    <CircularProgress size={14} />
+                  ) : err ? (
+                    <Tooltip title={`Failed to load: ${err}`} arrow>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fetchSamples(s.id);
+                        }}
+                        aria-label="Retry loading session samples"
+                      >
+                        <RefreshIcon fontSize="small" color="error" />
+                      </IconButton>
+                    </Tooltip>
+                  ) : null;
+                  return (
+                    <ListItem key={s.id} disablePadding secondaryAction={secondary}>
+                      <ListItemButton dense onClick={() => toggleSession(s.id)}>
+                        <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
+                        <ListItemText
+                          primary={new Date(s.start_ts * 1000).toLocaleString()}
+                          secondary={`${formatDuration(s.duration_s ?? s.end_ts - s.start_ts)} · ${s.sample_count} pts`}
+                          primaryTypographyProps={{variant: 'body2', noWrap: true}}
+                          secondaryTypographyProps={{variant: 'caption'}}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  );
+                })}
               </List>
             </CardContent>
           </Card>
@@ -269,7 +322,20 @@ export default function HeatmapPage() {
                 maxZoom={25}
                 initialPitchWithRotate={false}
                 dragRotate={false}
-                onLoad={(e) => e.target.touchZoomRotate.disableRotation()}
+                onLoad={(e) => {
+                  e.target.touchZoomRotate.disableRotation();
+                  // Drop focus from MapLibre's fullscreen ctrl button when the
+                  // container resizes — otherwise the focused button stays
+                  // inside an aria-hidden ancestor while MUI/MapLibre swap
+                  // wrapper attrs, which logs the WAI-ARIA violation seen in
+                  // dev tools.
+                  e.target.on('resize', () => {
+                    const active = document.activeElement;
+                    if (active instanceof HTMLElement && active.classList.contains('maplibregl-ctrl-shrink')) {
+                      active.blur();
+                    }
+                  });
+                }}
               >
                 <RFullscreenControl />
                 {Array.from(selected).map((id) => {
