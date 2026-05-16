@@ -25,6 +25,8 @@ import {
 } from '@mui/icons-material';
 import {Box, Card, CardContent, Chip, CircularProgress, Divider, IconButton, Tooltip, Typography, useTheme} from '@mui/material';
 import React, {useEffect, useRef, useState} from 'react';
+import SystemActionsSection from './SystemActionsSection';
+import SystemStatsSection from './SystemStatsSection';
 
 type PingState = {latency: number | null; error: string | null; loading: boolean};
 
@@ -551,6 +553,20 @@ export default function DebugPage() {
                     <Divider />
 
                     <RpcSection rpc={mower.rpc} />
+
+                    {mower.hasCapability('system.stats') && (
+                      <>
+                        <Divider />
+                        <SystemStatsSection rpc={mower.rpc} capabilities={mower.capabilities} />
+                      </>
+                    )}
+
+                    {(mower.hasCapability('system.reboot') || mower.hasCapability('system.docker_prune')) && (
+                      <>
+                        <Divider />
+                        <SystemActionsSection rpc={mower.rpc} capabilities={mower.capabilities} />
+                      </>
+                    )}
 
                     <Divider />
 

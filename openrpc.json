@@ -288,6 +288,70 @@
       }
     },
     {
+      "name": "system.reboot",
+      "summary": "Reboot the host machine (Raspberry Pi).",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "delay_s",
+          "description": "Delay in seconds before the reboot is issued (0–30, default 1). Lets the RPC response reach the client before the host goes down.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0, "maximum": 30}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Acknowledgement. The MQTT connection will drop shortly after this returns.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ok": {"type": "boolean"},
+            "delay_s": {"type": "integer"}
+          }
+        }
+      }
+    },
+    {
+      "name": "system.stats",
+      "summary": "Read live host metrics: CPU %, RAM, CPU temperature, root-filesystem usage, uptime.",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "Snapshot of host metrics. Individual fields are omitted when not available (e.g. when running outside a Pi or without pid: host).",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cpu_percent": {"type": "number", "description": "Aggregate CPU utilisation 0–100."},
+            "ram_total_bytes": {"type": "integer"},
+            "ram_used_bytes": {"type": "integer"},
+            "ram_available_bytes": {"type": "integer"},
+            "cpu_temp_c": {"type": "number", "description": "CPU temperature in degrees Celsius."},
+            "disk_total_bytes": {"type": "integer", "description": "Size of the host root filesystem (SD/eMMC)."},
+            "disk_used_bytes": {"type": "integer"},
+            "disk_free_bytes": {"type": "integer"},
+            "uptime_seconds": {"type": "number"}
+          }
+        }
+      }
+    },
+    {
+      "name": "system.docker_prune",
+      "summary": "Remove unused Docker images on the host (`docker image prune -af`).",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "Result of the prune. `reclaimed_bytes` is parsed from the docker output and may be 0 when nothing was eligible for removal.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ok": {"type": "boolean"},
+            "reclaimed_bytes": {"type": "integer"},
+            "output": {"type": "string"}
+          }
+        }
+      }
+    },
+    {
       "name": "logs.tail",
       "summary": "Read recent log lines from a node or 'all' sources on the mower host.",
       "paramStructure": "by-name",
