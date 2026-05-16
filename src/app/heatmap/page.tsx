@@ -29,8 +29,12 @@ import {
   useTheme,
 } from '@mui/material';
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {FocusIcon} from 'lucide-react';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
+import ControlButton from '@/components/map/ControlButton';
+import MapStyleSelector from '@/components/map/MapStyleSelector';
 import {mapStyles} from '@/components/map/mapStyles';
+import {useUiStore} from '@/stores/uiStore';
 import HeatmapLayer from './HeatmapLayer';
 import {METRICS, type MetricId, type Sample} from './metrics';
 import {rampSwatch} from './colors';
@@ -60,7 +64,8 @@ const INITIAL_STRIDE = 4;
 export default function HeatmapPage() {
   const theme = useTheme();
   const rpc = useSelectedMower((s) => s?.rpc);
-  const {datum} = useEffectiveDatum();
+  const {datum, hasReal: hasRealDatum} = useEffectiveDatum();
+  const mapStyle = useUiStore((s) => s.mapStyle);
   const hasCap = useSelectedMower((s) => s?.hasCapability('telemetry.list_sessions') ?? false);
 
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
@@ -146,10 +151,8 @@ export default function HeatmapPage() {
     });
   };
 
-  // Fit map to the union of selected sessions. samplesVersion is included so
-  // the effect re-runs when fetchSamples populates samplesRef asynchronously
-  // (the ref mutation alone is invisible to React).
-  useEffect(() => {
+  // Fit map to the union of selected sessions.
+  const fitToBounds = useCallback(() => {
     if (!mapRef.current) return;
     const utm = datumToRelative([datum.long, datum.lat]);
     const points: Feature<Point>[] = [];
@@ -171,7 +174,14 @@ export default function HeatmapPage() {
       ],
       {padding: 60, duration: 600},
     );
-  }, [selected, datum, samplesVersion]);
+  }, [selected, datum]);
+
+  // samplesVersion is included so the effect re-runs when fetchSamples
+  // populates samplesRef asynchronously (the ref mutation alone is invisible
+  // to React).
+  useEffect(() => {
+    fitToBounds();
+  }, [fitToBounds, samplesVersion]);
 
   if (!hasCap) {
     return (
@@ -316,7 +326,7 @@ export default function HeatmapPage() {
               <RMap
                 ref={mapRef}
                 style={{width: '100%', height: '100%'}}
-                mapStyle={mapStyles[datum ? 'satellite' : 'plain']}
+                mapStyle={mapStyles[hasRealDatum ? mapStyle : 'plain']}
                 initialAttributionControl={false}
                 maxZoom={25}
                 initialPitchWithRotate={false}
@@ -337,6 +347,8 @@ export default function HeatmapPage() {
                 }}
               >
                 <RFullscreenControl />
+                <ControlButton position="top-right" icon={FocusIcon} title="Fit to bounds" onClick={fitToBounds} />
+                <MapStyleSelector />
                 {Array.from(selected).map((id) => {
                   const arr = samplesRef.current!.get(id);
                   if (!arr || arr.length === 0) return null;
