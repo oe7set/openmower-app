@@ -14,7 +14,7 @@ import {Box, Dialog, useMediaQuery, useTheme, type SxProps} from '@mui/material'
 import bbox from '@turf/bbox';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
-import {ActivityIcon, FocusIcon, GlobeIcon, GridIcon, LayoutListIcon, PencilIcon, PlayCircleIcon, RouteIcon, SquareIcon} from 'lucide-react';
+import {ActivityIcon, FocusIcon, GridIcon, LayoutListIcon, PencilIcon, PlayCircleIcon, RouteIcon, SquareIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
@@ -36,6 +36,7 @@ import MapOverlayLayer from './layers/MapOverlayLayer';
 import PathLayer from './layers/PathLayer';
 import PatternPreviewLayer from './layers/PatternPreviewLayer';
 import {mapStyles} from './mapStyles';
+import MapStyleSelector from './MapStyleSelector';
 import MowerMarker from './MowerMarker';
 import RecordingPanel from './recording/RecordingPanel';
 import TeleopControls from './teleop/TeleopControls';
@@ -76,7 +77,6 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const [showAreaList, setShowAreaList] = useState(!isMobile);
   // Persisted view preferences (theme is in uiStore too — these stay aligned).
   const mapStyle = useUiStore((s) => s.mapStyle);
-  const setMapStyle = useUiStore((s) => s.setMapStyle);
   const showPlannedPath = useUiStore((s) => s.showPlannedPath);
   const setShowPlannedPath = useUiStore((s) => s.setShowPlannedPath);
   const showCoveragePath = useUiStore((s) => s.showCoveragePath);
@@ -85,7 +85,6 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const setShowMowingTrail = useUiStore((s) => s.setShowMowingTrail);
   const showPatternPreview = useUiStore((s) => s.showPatternPreview);
   const setShowPatternPreview = useUiStore((s) => s.setShowPatternPreview);
-  const showSatelliteLayer = mapStyle === 'satellite';
 
   // Outlines for the pattern preview come straight from mapData (already in
   // mower-relative metres). We only feed the active mowing-areas so obstacles
@@ -294,7 +293,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         id={id}
         ref={mapRef}
         style={{width: '100%', height: '100%'}}
-        mapStyle={mapStyles[mapData.datum && showSatelliteLayer ? 'satellite' : 'white']}
+        mapStyle={mapStyles[mapData.datum ? mapStyle : 'plain']}
         initialAttributionControl={false}
         maxZoom={25}
         initialPitchWithRotate={false}
@@ -342,15 +341,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         {/* Right controls */}
         <RFullscreenControl />
         <ControlButton position="top-right" icon={FocusIcon} title="Fit to bounds" onClick={() => fitToBounds()} />
-        {mapData.datum && (
-          <ControlButton
-            position="top-right"
-            title="Toggle satellite layer"
-            icon={GlobeIcon}
-            active={showSatelliteLayer}
-            onClick={() => setMapStyle(showSatelliteLayer ? 'white' : 'satellite')}
-          />
-        )}
+        <MapStyleSelector />
         <ControlButton
           position="top-right"
           icon={LayoutListIcon}

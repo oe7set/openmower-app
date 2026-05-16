@@ -317,7 +317,7 @@ export default function HeatmapPage() {
               <RMap
                 ref={mapRef}
                 style={{width: '100%', height: '100%'}}
-                mapStyle={mapStyles[datum ? 'satellite' : 'white']}
+                mapStyle={mapStyles[datum ? 'satellite' : 'plain']}
                 initialAttributionControl={false}
                 maxZoom={25}
                 initialPitchWithRotate={false}

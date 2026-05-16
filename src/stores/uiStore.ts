@@ -3,7 +3,7 @@ import {persist} from 'zustand/middleware';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type Units = 'metric' | 'imperial';
-export type MapStyle = 'white' | 'satellite';
+export type MapStyle = 'plain' | 'satellite' | 'osm' | 'hybrid';
 
 interface UiStore {
   themeMode: ThemeMode;
@@ -31,7 +31,7 @@ export const useUiStore = create<UiStore>()(
     (set) => ({
       themeMode: 'system',
       units: 'metric',
-      mapStyle: 'white',
+      mapStyle: 'plain',
       showPlannedPath: true,
       showCoveragePath: false,
       showMowingTrail: false,
@@ -47,7 +47,18 @@ export const useUiStore = create<UiStore>()(
       setTeleopSpeedCap: (teleopSpeedCap) =>
         set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
     }),
-    {name: 'openmower-ui'},
+    {
+      name: 'openmower-ui',
+      version: 1,
+      // v0 used 'white' as the plain-background style; rename it on load.
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<UiStore> & {mapStyle?: string};
+        if (version < 1 && state?.mapStyle === 'white') {
+          state.mapStyle = 'plain';
+        }
+        return state as UiStore;
+      },
+    },
   ),
 );
 
