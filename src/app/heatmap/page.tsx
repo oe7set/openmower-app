@@ -9,23 +9,30 @@ import type {Feature, Point} from 'geojson';
 import type {Map as MlMap} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
-import {Refresh as RefreshIcon} from '@mui/icons-material';
+import {Refresh as RefreshIcon, ListAlt as ListAltIcon} from '@mui/icons-material';
 import {
   Alert,
+  Badge,
   Box,
   Button,
   Card,
   CardContent,
   Checkbox,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
+  MenuItem,
+  Select,
   Tooltip,
   Typography,
+  useMediaQuery,
   useTheme,
 } from '@mui/material';
 import {useCallback, useEffect, useRef, useState} from 'react';
@@ -63,6 +70,7 @@ const INITIAL_STRIDE = 4;
 
 export default function HeatmapPage() {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const rpc = useSelectedMower((s) => s?.rpc);
   const {datum, hasReal: hasRealDatum} = useEffectiveDatum();
   const mapStyle = useUiStore((s) => s.mapStyle);
@@ -82,6 +90,7 @@ export default function HeatmapPage() {
   const [sampleErrors, setSampleErrors] = useState<Record<string, string>>({});
   const [metric, setMetric] = useState<MetricId>('gps');
   const [hoverIdxBySession, setHoverIdxBySession] = useState<Record<string, number | null>>({});
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const mapRef = useRef<MlMap>(null);
 
   const refreshSessions = useCallback(async () => {
@@ -201,114 +210,185 @@ export default function HeatmapPage() {
   const def = METRICS[metric];
   const swatch = rampSwatch(def.ramp, def.goodGreen);
 
+  const sessionsPanel = (
+    <>
+      <Box sx={{display: 'flex', alignItems: 'center', mb: 1}}>
+        <Typography variant="subtitle1" fontWeight={600} sx={{flex: 1}}>
+          Sessions
+        </Typography>
+        <IconButton size="small" onClick={refreshSessions} disabled={loadingSessions}>
+          {loadingSessions ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+        </IconButton>
+      </Box>
+      {sessionsError && (
+        <Alert
+          severity="error"
+          variant="outlined"
+          sx={{mb: 1}}
+          action={
+            <IconButton
+              size="small"
+              onClick={refreshSessions}
+              disabled={loadingSessions}
+              aria-label="Retry loading sessions"
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          }
+        >
+          Could not load sessions: {sessionsError}
+        </Alert>
+      )}
+      {sessions === null && loadingSessions && (
+        <Box sx={{display: 'flex', justifyContent: 'center', py: 3}}>
+          <CircularProgress size={20} />
+        </Box>
+      )}
+      {sessions && sessions.length === 0 && !sessionsError && (
+        <Typography variant="body2" color="text.secondary" sx={{py: 2, textAlign: 'center'}}>
+          No telemetry sessions recorded yet.
+        </Typography>
+      )}
+      <List
+        dense
+        disablePadding
+        sx={{maxHeight: {xs: 'unset', md: 'calc(100vh - 320px)'}, overflow: 'auto'}}
+      >
+        {sessions?.map((s) => {
+          const err = sampleErrors[s.id];
+          const secondary = loadingSamples.has(s.id) ? (
+            <CircularProgress size={14} />
+          ) : err ? (
+            <Tooltip title={`Failed to load: ${err}`} arrow>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fetchSamples(s.id);
+                }}
+                aria-label="Retry loading session samples"
+              >
+                <RefreshIcon fontSize="small" color="error" />
+              </IconButton>
+            </Tooltip>
+          ) : null;
+          return (
+            <ListItem key={s.id} disablePadding secondaryAction={secondary}>
+              <ListItemButton dense onClick={() => toggleSession(s.id)}>
+                <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
+                <ListItemText
+                  primary={new Date(s.start_ts * 1000).toLocaleString()}
+                  secondary={`${formatDuration(s.duration_s ?? s.end_ts - s.start_ts)} · ${s.sample_count} pts`}
+                  primaryTypographyProps={{variant: 'body2', noWrap: true}}
+                  secondaryTypographyProps={{variant: 'caption'}}
+                />
+              </ListItemButton>
+            </ListItem>
+          );
+        })}
+      </List>
+    </>
+  );
+
   return (
     <Page>
       <PageHeader title="Heatmap" subtitle="Replay mowing telemetry as colour-coded layers" />
       <PageContent>
         <Box sx={{display: 'flex', flexDirection: {xs: 'column', md: 'row'}, gap: 2, mt: 2}}>
-          {/* Sidebar — sessions list */}
-          <Card sx={{flex: '0 0 280px', minWidth: 0}}>
-            <CardContent sx={{pb: '8px !important'}}>
-              <Box sx={{display: 'flex', alignItems: 'center', mb: 1}}>
-                <Typography variant="subtitle1" fontWeight={600} sx={{flex: 1}}>
-                  Sessions
-                </Typography>
-                <IconButton size="small" onClick={refreshSessions} disabled={loadingSessions}>
-                  {loadingSessions ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
-                </IconButton>
-              </Box>
-              {sessionsError && (
-                <Alert
-                  severity="error"
-                  variant="outlined"
-                  sx={{mb: 1}}
-                  action={
-                    <IconButton
-                      size="small"
-                      onClick={refreshSessions}
-                      disabled={loadingSessions}
-                      aria-label="Retry loading sessions"
-                    >
-                      <RefreshIcon fontSize="small" />
-                    </IconButton>
-                  }
-                >
-                  Could not load sessions: {sessionsError}
-                </Alert>
-              )}
-              {sessions === null && loadingSessions && (
-                <Box sx={{display: 'flex', justifyContent: 'center', py: 3}}>
-                  <CircularProgress size={20} />
-                </Box>
-              )}
-              {sessions && sessions.length === 0 && !sessionsError && (
-                <Typography variant="body2" color="text.secondary" sx={{py: 2, textAlign: 'center'}}>
-                  No telemetry sessions recorded yet.
-                </Typography>
-              )}
-              <List dense disablePadding sx={{maxHeight: 'calc(100vh - 320px)', overflow: 'auto'}}>
-                {sessions?.map((s) => {
-                  const err = sampleErrors[s.id];
-                  const secondary = loadingSamples.has(s.id) ? (
-                    <CircularProgress size={14} />
-                  ) : err ? (
-                    <Tooltip title={`Failed to load: ${err}`} arrow>
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fetchSamples(s.id);
-                        }}
-                        aria-label="Retry loading session samples"
-                      >
-                        <RefreshIcon fontSize="small" color="error" />
-                      </IconButton>
-                    </Tooltip>
-                  ) : null;
-                  return (
-                    <ListItem key={s.id} disablePadding secondaryAction={secondary}>
-                      <ListItemButton dense onClick={() => toggleSession(s.id)}>
-                        <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
-                        <ListItemText
-                          primary={new Date(s.start_ts * 1000).toLocaleString()}
-                          secondary={`${formatDuration(s.duration_s ?? s.end_ts - s.start_ts)} · ${s.sample_count} pts`}
-                          primaryTypographyProps={{variant: 'body2', noWrap: true}}
-                          secondaryTypographyProps={{variant: 'caption'}}
-                        />
-                      </ListItemButton>
-                    </ListItem>
-                  );
-                })}
-              </List>
-            </CardContent>
-          </Card>
+          {/* Sidebar — desktop only */}
+          {!isMobile && (
+            <Card sx={{flex: '0 0 280px', minWidth: 0}}>
+              <CardContent sx={{pb: '8px !important'}}>{sessionsPanel}</CardContent>
+            </Card>
+          )}
+
+          {/* Sessions dialog — mobile only */}
+          {isMobile && (
+            <Dialog
+              open={sessionsOpen}
+              onClose={() => setSessionsOpen(false)}
+              fullWidth
+              maxWidth="sm"
+              slotProps={{paper: {sx: {maxHeight: '80vh'}}}}
+            >
+              <DialogTitle sx={{pb: 0}}>Sessions</DialogTitle>
+              <DialogContent>{sessionsPanel}</DialogContent>
+            </Dialog>
+          )}
 
           {/* Main area — map + controls */}
-          <Card sx={{flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 280px)'}}>
+          <Card
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: {xs: 'calc(100dvh - 200px)', md: 'calc(100vh - 280px)'},
+            }}
+          >
             <CardContent sx={{pb: 1}}>
-              <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
-                {ALL_METRICS.map((mid) => {
-                  const m = METRICS[mid];
-                  const active = mid === metric;
-                  return (
-                    <Tooltip key={mid} title={m.description} arrow>
-                      <Button
-                        size="small"
-                        variant={active ? 'contained' : 'outlined'}
-                        onClick={() => setMetric(mid)}
-                        sx={{textTransform: 'none', fontSize: '0.78rem'}}
-                      >
-                        {m.label}
-                      </Button>
-                    </Tooltip>
-                  );
-                })}
-              </Box>
+              {isMobile ? (
+                <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={
+                      <Badge badgeContent={selected.size} color="primary" overlap="circular">
+                        <ListAltIcon fontSize="small" />
+                      </Badge>
+                    }
+                    onClick={() => setSessionsOpen(true)}
+                    sx={{textTransform: 'none', flexShrink: 0}}
+                  >
+                    Sessions
+                  </Button>
+                  <Select
+                    size="small"
+                    value={metric}
+                    onChange={(e) => setMetric(e.target.value as MetricId)}
+                    sx={{flex: 1, minWidth: 0, fontSize: '0.85rem'}}
+                  >
+                    {ALL_METRICS.map((mid) => (
+                      <MenuItem key={mid} value={mid} sx={{fontSize: '0.85rem'}}>
+                        {METRICS[mid].label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </Box>
+              ) : (
+                <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
+                  {ALL_METRICS.map((mid) => {
+                    const m = METRICS[mid];
+                    const active = mid === metric;
+                    return (
+                      <Tooltip key={mid} title={m.description} arrow>
+                        <Button
+                          size="small"
+                          variant={active ? 'contained' : 'outlined'}
+                          onClick={() => setMetric(mid)}
+                          sx={{textTransform: 'none', fontSize: '0.78rem'}}
+                        >
+                          {m.label}
+                        </Button>
+                      </Tooltip>
+                    );
+                  })}
+                </Box>
+              )}
               <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5, mt: 1.5, flexWrap: 'wrap'}}>
                 <Typography variant="caption" color="text.secondary">
                   Low
                 </Typography>
-                <Box sx={{display: 'flex', height: 12, flex: '0 0 200px', borderRadius: 1, overflow: 'hidden'}}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    height: 12,
+                    flex: {xs: '1 1 120px', md: '0 0 200px'},
+                    minWidth: 0,
+                    borderRadius: 1,
+                    overflow: 'hidden',
+                  }}
+                >
                   {swatch.map((c, i) => (
                     <Box key={i} sx={{flex: 1, bgcolor: c}} />
                   ))}
@@ -316,9 +396,11 @@ export default function HeatmapPage() {
                 <Typography variant="caption" color="text.secondary">
                   High
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ml: 1, fontStyle: 'italic'}}>
-                  {def.description}
-                </Typography>
+                {!isMobile && (
+                  <Typography variant="caption" color="text.secondary" sx={{ml: 1, fontStyle: 'italic'}}>
+                    {def.description}
+                  </Typography>
+                )}
               </Box>
             </CardContent>
             <Divider />
@@ -366,7 +448,8 @@ export default function HeatmapPage() {
                   );
                 })}
               </RMap>
-              {/* Tooltip — first hovered session wins. */}
+              {/* Tooltip — first hovered session wins. On mobile it sits at the
+                  bottom so it doesn't collide with the map controls (top-right). */}
               {Object.entries(hoverIdxBySession).map(([id, idx]) => {
                 if (idx === null || idx === undefined) return null;
                 const arr = samplesRef.current!.get(id);
@@ -377,8 +460,9 @@ export default function HeatmapPage() {
                     key={id}
                     sx={{
                       position: 'absolute',
-                      top: 12,
-                      right: 12,
+                      ...(isMobile
+                        ? {bottom: 12, left: 12, right: 12, maxWidth: 'unset'}
+                        : {top: 12, right: 12, maxWidth: 280}),
                       bgcolor: theme.palette.background.paper,
                       border: `1px solid ${theme.palette.divider}`,
                       borderRadius: 1,
@@ -388,7 +472,6 @@ export default function HeatmapPage() {
                       fontFamily: 'var(--font-dm-mono), monospace',
                       pointerEvents: 'none',
                       zIndex: 5,
-                      maxWidth: 280,
                     }}
                   >
                     <div>{new Date(s.ts * 1000).toLocaleTimeString()}</div>
@@ -419,10 +502,15 @@ export default function HeatmapPage() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     pointerEvents: 'none',
+                    px: 2,
                   }}
                 >
-                  <Typography variant="body2" color="text.secondary" sx={{bgcolor: theme.palette.background.paper, px: 2, py: 1, borderRadius: 1}}>
-                    Pick one or more sessions to render their heatmap.
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{bgcolor: theme.palette.background.paper, px: 2, py: 1, borderRadius: 1, textAlign: 'center'}}
+                  >
+                    {isMobile ? 'Tap “Sessions” to pick one or more.' : 'Pick one or more sessions to render their heatmap.'}
                   </Typography>
                 </Box>
               )}
