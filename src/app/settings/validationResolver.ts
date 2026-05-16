@@ -31,6 +31,12 @@ export const jsonSchemaResolver = (
 
     processErrors(formErrors);
 
-    return {values: {}, errors};
+    // Keep the values intact even when validation fails. RHF's typed
+    // Resolver demands `values: Record<string, never>` in the error case,
+    // but at runtime any object works and is what we want here — returning
+    // `{}` would clobber the entire form on the very first onChange tick
+    // any time the schema flags an issue (and the schema flags issues from
+    // the moment the form mounts because some defaults trip validation).
+    return {values, errors} as unknown as ReturnType<Resolver<Record<string, unknown>>>;
   };
 };

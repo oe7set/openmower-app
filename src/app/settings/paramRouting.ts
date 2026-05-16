@@ -144,7 +144,10 @@ export function unflattenSnapshots(
         raw = envSnapshot[leaf.yamlPath];
       }
     }
-    if (raw === undefined) continue;
+    // null means the backend knows the leaf but has no live value yet
+    // (e.g. a ROS param that hasn't been published). Skip rather than
+    // coerce so the form falls back to the schema default.
+    if (raw === undefined || raw === null) continue;
     setNestedValue(out, leaf.path, coerceValue(raw, leaf.type));
   }
   return out;
