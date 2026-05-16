@@ -57,6 +57,11 @@ export default function LogsView() {
   const argsRef = useRef({source, lines});
   argsRef.current = {source, lines};
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Stick to the bottom unless the user has scrolled away. Updated by the
+  // container's onScroll handler; consulted after each entries update.
+  const stickyRef = useRef(true);
+
   const fetchLogs = useCallback(async () => {
     if (!rpc) return;
     setLoading(true);
@@ -91,6 +96,14 @@ export default function LogsView() {
     const needle = search.toLowerCase();
     return entries.filter((e) => e.msg.toLowerCase().includes(needle) || e.source.toLowerCase().includes(needle));
   }, [entries, search]);
+
+  // Re-apply sticky-bottom after each render of new entries.
+  useEffect(() => {
+    if (!stickyRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [filtered]);
 
   const copyAll = async () => {
     const text = filtered
@@ -193,19 +206,30 @@ export default function LogsView() {
         </Box>
 
         <Box
+          ref={containerRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stickyRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+          }}
           sx={{
             maxHeight: 'calc(100vh - 360px)',
             minHeight: 300,
             overflow: 'auto',
             fontFamily: 'var(--font-dm-mono), monospace',
-            fontSize: {xs: '0.65rem', md: '0.78rem'},
-            lineHeight: 1.55,
+            fontSize: {xs: '0.55rem', sm: '0.7rem', md: '0.78rem'},
+            lineHeight: {xs: 1.4, md: 1.55},
             border: `1px solid ${theme.palette.divider}`,
             borderRadius: 1,
             bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.03)',
             // content-visibility lets the browser skip rendering off-screen
             // rows — keeps thousands of lines smooth without react-window.
-            '& > div': {contentVisibility: 'auto', containIntrinsicSize: '24px'},
+            '& > div': {
+              contentVisibility: 'auto',
+              containIntrinsicSize: {xs: '20px', md: '24px'},
+              // Force the row grid to grow with its content so the outer
+              // container actually scrolls horizontally on long messages.
+              minWidth: 'max-content',
+            },
           }}
         >
           {filtered.length === 0 && !loading && (
@@ -223,7 +247,7 @@ export default function LogsView() {
                 // On mobile we drop the dedicated source column; the source name
                 // is inlined in front of the message instead. Long messages
                 // scroll horizontally inside the outer auto-overflow container.
-                gridTemplateColumns: {xs: '92px 44px 1fr', md: '180px 64px 140px 1fr'},
+                gridTemplateColumns: {xs: '78px 36px 1fr', md: '180px 64px 140px 1fr'},
                 gap: 1,
                 px: 1.5,
                 py: 0.25,
