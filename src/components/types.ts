@@ -5,6 +5,7 @@ export interface NavigationItem {
   icon: ReactElement;
   path: string;
   isGlobal: boolean;
+  isPrimary?: boolean;
 }
 
 export interface MowerConfig {

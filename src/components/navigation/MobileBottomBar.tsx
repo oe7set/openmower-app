@@ -13,7 +13,9 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
   const theme = useTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const navigationItems = createNavigationItems();
+  const navigationItems = createNavigationItems().filter((item) => item.isPrimary);
+  const activeIndex = navigationItems.findIndex((item) => item.path === pathname);
+  const value: number | 'menu' = activeIndex === -1 ? 'menu' : activeIndex;
 
   const handleNavigation = (path: string) => {
     router.push(path);
@@ -45,7 +47,7 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
         }}
       >
         <BottomNavigation
-          value={navigationItems.findIndex((item) => item.path === pathname)}
+          value={value}
           onChange={(_, newValue) => {
             if (newValue === 'menu') {
               handleMenuClick();

@@ -14,10 +14,10 @@ import {
 
 export function createNavigationItems(): NavigationItem[] {
   return [
-    {label: 'Dashboard', icon: <DashboardIcon />, path: '/', isGlobal: true},
-    {label: 'Map', icon: <MapIcon />, path: '/map', isGlobal: false},
-    {label: 'Drive', icon: <DriveIcon />, path: '/drive', isGlobal: false},
-    {label: 'Tasks', icon: <TaskIcon />, path: '/tasks', isGlobal: false},
+    {label: 'Dashboard', icon: <DashboardIcon />, path: '/', isGlobal: true, isPrimary: true},
+    {label: 'Map', icon: <MapIcon />, path: '/map', isGlobal: false, isPrimary: true},
+    {label: 'Drive', icon: <DriveIcon />, path: '/drive', isGlobal: false, isPrimary: true},
+    {label: 'Tasks', icon: <TaskIcon />, path: '/tasks', isGlobal: false, isPrimary: true},
     {label: 'Sensors', icon: <SensorIcon />, path: '/sensors', isGlobal: false},
     {label: 'Statistics', icon: <StatsIcon />, path: '/statistics', isGlobal: false},
     {label: 'Heatmap', icon: <HeatmapIcon />, path: '/heatmap', isGlobal: false},
