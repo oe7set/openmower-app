@@ -40,6 +40,7 @@ import {
   type State,
   type VersionInfo,
 } from './schemas';
+import {useDatumCacheStore} from './datumCacheStore';
 import {pushSensorValue} from './sensorsStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
@@ -229,6 +230,26 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'version/json');
             client.subscribe(clientMower.prefix + 'rpc/response');
           }
+          // The map/json topic doesn't carry the GPS datum (mower_map_service
+          // omits it), so pull it from the live ROS-param-backed config. We
+          // populate the persisted datum cache so satellite/OSM/hybrid styles
+          // can position tiles correctly even on the first connect.
+          for (const clientMower of clientMowers) {
+            const mower = mowers[clientMower.idx];
+            mower.rpc.meta.config
+              .get()
+              .then((cfg) => {
+                const cfgMap = cfg as unknown as Record<string, string>;
+                const lat = parseFloat(cfgMap.OM_DATUM_LAT);
+                const long = parseFloat(cfgMap.OM_DATUM_LONG);
+                const heightRaw = cfgMap.OM_DATUM_HEIGHT;
+                const height = heightRaw ? parseFloat(heightRaw) : 0;
+                if (Number.isFinite(lat) && Number.isFinite(long) && (lat !== 0 || long !== 0)) {
+                  useDatumCacheStore.getState().setDatum(mower.id, {lat, long, height});
+                }
+              })
+              .catch((e) => console.warn('[mowersStore] meta.config.get failed:', e));
+          }
         });
 
         client.on('message', (topic, payload) => {
@@ -267,6 +288,9 @@ export const useMowersStore = create<MowersStore>()(
               try {
                 const json = JSON.parse(payload.toString());
                 const parsed = 'areas' in json ? mapSchema.parse(json) : convertLegacyMap(legacyMapSchema.parse(json));
+                if (parsed.datum) {
+                  useDatumCacheStore.getState().setDatum(mowers[idx].id, parsed.datum);
+                }
                 set((state) => {
                   state.mowers[idx].map = parsed;
                 });

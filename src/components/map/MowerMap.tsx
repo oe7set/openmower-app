@@ -2,6 +2,7 @@
 
 import {useMapboxDraw, useMapContext, useMapHover} from '@/contexts/MapContext';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
+import {useDatumCacheStore} from '@/stores/datumCacheStore';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {fallbackDatum, MapData, type AreaProps} from '@/stores/schemas';
 import {useUiStore} from '@/stores/uiStore';
@@ -49,7 +50,11 @@ interface MowerMapProps {
 }
 
 export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
-  const datum = mapData.datum ?? fallbackDatum;
+  const mowerId = useSelectedMower((s) => s?.id);
+  const cachedDatum = useDatumCacheStore((s) => (mowerId ? s.byMower[mowerId] : undefined));
+  const realDatum = mapData.datum ?? cachedDatum;
+  const datum = realDatum ?? fallbackDatum;
+  const hasRealDatum = Boolean(realDatum);
   const {id, editMode, setEditMode, features, setFeatures, drawWorkflow, setDrawWorkflow} = useMapContext();
   const mapRef = useRef<Map>(null);
   const draw = useMapboxDraw();
@@ -293,7 +298,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         id={id}
         ref={mapRef}
         style={{width: '100%', height: '100%'}}
-        mapStyle={mapStyles[mapData.datum ? mapStyle : 'plain']}
+        mapStyle={mapStyles[hasRealDatum ? mapStyle : 'plain']}
         initialAttributionControl={false}
         maxZoom={25}
         initialPitchWithRotate={false}
