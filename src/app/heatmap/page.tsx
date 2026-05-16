@@ -291,10 +291,19 @@ export default function HeatmapPage() {
   );
 
   return (
-    <Page>
+    <Page sx={{height: '100%'}}>
       <PageHeader title="Heatmap" subtitle="Replay mowing telemetry as colour-coded layers" />
-      <PageContent>
-        <Box sx={{display: 'flex', flexDirection: {xs: 'column', md: 'row'}, gap: 2, mt: 2}}>
+      <PageContent sx={{flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0}}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: {xs: 'column', md: 'row'},
+            gap: 2,
+            mt: 2,
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           {/* Sidebar — desktop only */}
           {!isMobile && (
             <Card sx={{flex: '0 0 280px', minWidth: 0}}>
@@ -321,9 +330,9 @@ export default function HeatmapPage() {
             sx={{
               flex: 1,
               minWidth: 0,
+              minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
-              minHeight: {xs: 'calc(100dvh - 200px)', md: 'calc(100vh - 280px)'},
             }}
           >
             <CardContent sx={{pb: 1}}>
