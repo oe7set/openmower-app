@@ -238,7 +238,18 @@ function SettingsFormContent({formState}: {formState: FormState}) {
 
   const topLevelFieldsets = formState.fields.filter((field) => field.type === 'fieldset') as FieldsetFieldType[];
   const hasChanges = confirmedFields.size > 0;
-  const {isValid} = methods.formState;
+  // RHF's global isValid is too strict for our flow: the schema validator
+  // walks the entire defaults tree on mount, and any out-of-range value
+  // anywhere — even on a field the user has never touched — flips the
+  // form invalid. Gate Save on errors that sit on confirmed fields only,
+  // i.e. on values the user is actually trying to persist.
+  const {errors} = methods.formState;
+  const hasConfirmedErrors = useMemo(() => {
+    for (const path of confirmedFields) {
+      if (getNestedValue(errors, path) !== undefined) return true;
+    }
+    return false;
+  }, [errors, confirmedFields]);
 
   async function performSave() {
     if (!rpc) return;
@@ -339,7 +350,7 @@ function SettingsFormContent({formState}: {formState: FormState}) {
               <Button
                 variant="contained"
                 startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
-                disabled={!hasChanges || !isValid || saving || !rpc}
+                disabled={!hasChanges || hasConfirmedErrors || saving || !rpc}
                 onClick={() => {
                   if (!rpc) return;
                   // Pre-flight: gate hardware-geometry edits behind a

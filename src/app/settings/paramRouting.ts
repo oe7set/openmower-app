@@ -27,6 +27,8 @@ type SchemaNode = {
   anyOf?: SchemaNode[];
   oneOf?: SchemaNode[];
   type?: string | string[];
+  minimum?: number;
+  maximum?: number;
   'x-source'?: SettingSource;
   'x-yaml-path'?: string;
   'x-ros-param'?: string;
@@ -46,6 +48,9 @@ export interface LeafInfo {
   envVar?: string;
   readonly?: boolean;
   restart?: SettingRestart;
+  /** JSON Schema numeric bounds — used to gate live-value propagation. */
+  minimum?: number;
+  maximum?: number;
 }
 
 // Walk the (dereferenced + allOf-merged) schema and emit one LeafInfo per
@@ -77,6 +82,8 @@ function walk(node: SchemaNode | undefined, prefix: string[], out: Map<string, L
       envVar: node['x-environment-variable'],
       readonly: !!node['x-readonly-via-ui'],
       restart: node['x-restart-required'],
+      minimum: typeof node.minimum === 'number' ? node.minimum : undefined,
+      maximum: typeof node.maximum === 'number' ? node.maximum : undefined,
     });
   }
 
@@ -148,7 +155,18 @@ export function unflattenSnapshots(
     // (e.g. a ROS param that hasn't been published). Skip rather than
     // coerce so the form falls back to the schema default.
     if (raw === undefined || raw === null) continue;
-    setNestedValue(out, leaf.path, coerceValue(raw, leaf.type));
+    const coerced = coerceValue(raw, leaf.type);
+    // Defense in depth: if the live snapshot carries a number that the
+    // schema's own minimum/maximum would reject, don't propagate it.
+    // Otherwise the form initialises with an invalid default, RHF marks
+    // the form globally invalid, and the Save button silently disables
+    // for fields the user never even touched. Skipping lets the schema
+    // default (or just an empty input) take over instead.
+    if (typeof coerced === 'number' && Number.isFinite(coerced)) {
+      if (leaf.minimum !== undefined && coerced < leaf.minimum) continue;
+      if (leaf.maximum !== undefined && coerced > leaf.maximum) continue;
+    }
+    setNestedValue(out, leaf.path, coerced);
   }
   return out;
 }
