@@ -192,9 +192,62 @@ export default function TasksPage() {
                       borderRadius: 2,
                       mb: 1,
                       backgroundColor: theme.palette.action.hover,
+                      px: {xs: 1.5, md: 2},
+                      py: {xs: 1, md: 1.5},
                     }}
-                    secondaryAction={
-                      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                  >
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexDirection: {xs: 'column', md: 'row'},
+                        alignItems: {xs: 'stretch', md: 'center'},
+                        gap: {xs: 1, md: 2},
+                        width: '100%',
+                      }}
+                    >
+                      <ListItemText
+                        sx={{flex: 1, minWidth: 0, m: 0}}
+                        primary={
+                          <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
+                            <Typography variant="body1" fontWeight="600">
+                              {s.name || '(unnamed)'}
+                            </Typography>
+                            {s.areas.length > 0 && (
+                              <Chip size="small" label={`${s.areas.length} area${s.areas.length === 1 ? '' : 's'}`} />
+                            )}
+                            {s.last_skip_reason && (
+                              <Chip
+                                size="small"
+                                color="warning"
+                                label={SKIP_LABELS[s.last_skip_reason]}
+                              />
+                            )}
+                          </Box>
+                        }
+                        secondary={
+                          <Box component="span" sx={{display: 'block'}}>
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              sx={{fontFamily: 'monospace', display: 'block'}}
+                            >
+                              {s.rrule} · {s.duration_minutes} min · {s.timezone}
+                            </Typography>
+                            <Typography component="span" variant="caption" color="text.secondary">
+                              Next run: {formatNextRun(s.next_run)}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          flexShrink: 0,
+                          justifyContent: 'flex-end',
+                        }}
+                      >
                         <Switch checked={s.enabled} onChange={() => handleToggle(s)} />
                         <Button size="small" onClick={() => setEditing(s)}>
                           Edit
@@ -203,41 +256,7 @@ export default function TasksPage() {
                           <DeleteIcon />
                         </IconButton>
                       </Box>
-                    }
-                  >
-                    <ListItemText
-                      primary={
-                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
-                          <Typography variant="body1" fontWeight="600">
-                            {s.name || '(unnamed)'}
-                          </Typography>
-                          {s.areas.length > 0 && (
-                            <Chip size="small" label={`${s.areas.length} area${s.areas.length === 1 ? '' : 's'}`} />
-                          )}
-                          {s.last_skip_reason && (
-                            <Chip
-                              size="small"
-                              color="warning"
-                              label={SKIP_LABELS[s.last_skip_reason]}
-                            />
-                          )}
-                        </Box>
-                      }
-                      secondary={
-                        <Box component="span" sx={{display: 'block'}}>
-                          <Typography
-                            component="span"
-                            variant="caption"
-                            sx={{fontFamily: 'monospace', display: 'block'}}
-                          >
-                            {s.rrule} · {s.duration_minutes} min · {s.timezone}
-                          </Typography>
-                          <Typography component="span" variant="caption" color="text.secondary">
-                            Next run: {formatNextRun(s.next_run)}
-                          </Typography>
-                        </Box>
-                      }
-                    />
+                    </Box>
                   </ListItem>
                 ))}
               </List>
