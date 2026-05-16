@@ -82,6 +82,9 @@ class Mower {
   readonly mqttUrl: string;
   readonly mqttClient: MqttClient;
   readonly mqttPrefix: string;
+  // Optional MJPEG stream URL forwarded from MowerConfig. The drive page reads
+  // this to decide whether to render the camera card.
+  readonly cameraUrl: string;
   readonly rpc: OpenMowerRpc;
   capabilities: Capabilities = {};
   state: State = stateDefaults;
@@ -114,6 +117,7 @@ class Mower {
     this.mqttUrl = config.mqtt_ws_url;
     this.mqttClient = mqttClient;
     this.mqttPrefix = config.mqtt_prefix;
+    this.cameraUrl = (config.camera_url ?? '').trim();
     this.rpc = new OpenMowerRpc(mqttClient, config.mqtt_prefix);
     const host = hostFromMqttUrl(config.mqtt_ws_url);
     this.teleopSocket = host ? new TeleopSocket(host) : null;

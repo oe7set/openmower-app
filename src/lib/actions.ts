@@ -13,6 +13,7 @@ async function loadConfigFromEnv(): Promise<AppConfig | null> {
   const hostname = host.split(':')[0];
   const mqtt_ws_url = process.env.MOWER_MQTT_WS_URL ?? `ws://${hostname}:9001`;
   const mqtt_prefix = process.env.MOWER_MQTT_PREFIX ?? '';
+  const camera_url = process.env.MOWER_CAMERA_URL ?? '';
 
   if (!name || !mqtt_ws_url) return null;
 
@@ -24,6 +25,7 @@ async function loadConfigFromEnv(): Promise<AppConfig | null> {
         mqtt_ws_url,
         mqtt_prefix,
         description: '',
+        camera_url,
       },
     ],
   };

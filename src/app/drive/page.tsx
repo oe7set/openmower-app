@@ -4,9 +4,12 @@ import VirtualJoystick from '@/components/map/teleop/VirtualJoystick';
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useToast} from '@/hooks/useToast';
 import {useTeleop} from '@/hooks/useTeleop';
+import {fmtDeg, fmtMeters, fmtXY} from '@/lib/format';
 import {MOWER_ACTIONS, type MowerActionId} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore} from '@/stores/uiStore';
+import CameraCard from './CameraCard';
+import TelemetryStrip from './TelemetryStrip';
 import {
   Cancel as CancelIcon,
   ExitToApp as ExitIcon,
@@ -90,6 +93,7 @@ export default function DrivePage() {
         <HeaderStat icon={<GpsIcon />} value={`${state?.gps_percentage ?? 0}%`} label="GPS" />
       </PageHeader>
       <PageContent>
+        <TelemetryStrip />
         <Box sx={{display: 'flex', flexDirection: {xs: 'column', md: 'row'}, gap: 2, mt: 2}}>
           {/* Live status / pose readout */}
           <Card sx={{flex: '1 1 280px'}}>
@@ -145,6 +149,11 @@ export default function DrivePage() {
             </CardContent>
           </Card>
         </Box>
+
+        {/* Camera — only renders when MOWER_CAMERA_URL is set. Sits above the
+            mode card so the operator sees the stream while reaching for the
+            joystick or the mode-switch buttons. */}
+        <CameraCard />
 
         {/* Mode-switch — gated purely on current_state. The joystick stream is
             silently discarded by mower_logic in any state where
@@ -310,18 +319,3 @@ function PoseRow({icon, label, value}: {icon?: React.ReactNode; label: string; v
   );
 }
 
-function fmtDeg(rad?: number): string {
-  if (rad === undefined) return '—';
-  const deg = (rad * 180) / Math.PI;
-  return `${deg.toFixed(1)}°`;
-}
-
-function fmtXY(x?: number, y?: number): string {
-  if (x === undefined || y === undefined) return '—';
-  return `${x.toFixed(2)}, ${y.toFixed(2)} m`;
-}
-
-function fmtMeters(m?: number): string {
-  if (m === undefined) return '—';
-  return m < 1 ? `${(m * 100).toFixed(1)} cm` : `${m.toFixed(2)} m`;
-}

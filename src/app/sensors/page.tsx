@@ -1,6 +1,7 @@
 'use client';
 
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
+import {fixTypeShort} from '@/lib/gps';
 import {useSelectedMower} from '@/stores/mowersStore';
 import type {SensorInfo} from '@/stores/schemas';
 import {GpsFixed as GpsFixIcon, Sensors as SensorsIcon, Timeline as TimelineIcon} from '@mui/icons-material';
@@ -8,20 +9,6 @@ import {Alert, Box} from '@mui/material';
 import {useMemo, useState} from 'react';
 import SensorGauge from './SensorGauge';
 import SensorHistoryDialog from './SensorHistoryDialog';
-
-// R9a — match the labels used in dashboard/GpsCard so the user sees
-// consistent terminology across the app.
-function fixTypeShort(t: number | undefined): string {
-  if (t === undefined) return '—';
-  switch (t) {
-    case 5: return 'RTK Fixed';
-    case 4: return 'RTK Float';
-    case 3: return 'DGPS';
-    case 2: return '3D';
-    case 1: return '2D';
-    default: return 'No Fix';
-  }
-}
 
 // Cosmetic ordering — keep the most-watched sensors at the top of the grid.
 // Anything not listed falls through to the natural order from the backend.
