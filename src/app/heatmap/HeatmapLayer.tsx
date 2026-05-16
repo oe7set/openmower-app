@@ -1,6 +1,6 @@
 'use client';
 
-import {fallbackDatum, type MapData} from '@/stores/schemas';
+import {type MapData} from '@/stores/schemas';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import type {Feature, FeatureCollection, Point} from 'geojson';
 import {RLayer, RSource} from 'maplibre-react-components';
@@ -11,7 +11,7 @@ interface HeatmapLayerProps {
   id: string;
   samples: Sample[];
   metricId: MetricId;
-  datum?: MapData['datum'];
+  datum: NonNullable<MapData['datum']>;
   /** Call when the user hovers a point — used to drive the tooltip overlay. */
   onHover?: (sampleIndex: number | null) => void;
 }
@@ -23,12 +23,11 @@ interface HeatmapLayerProps {
 // parent page owns the popover so it can show the full sample detail. We just
 // publish hovered-index back via onHover and let the page render.
 export default function HeatmapLayer({id, samples, metricId, datum, onHover}: HeatmapLayerProps) {
-  const effectiveDatum = datum ?? fallbackDatum;
   const metric = METRICS[metricId];
 
   const featureCollection = useMemo<FeatureCollection<Point>>(() => {
     if (samples.length === 0) return {type: 'FeatureCollection', features: []};
-    const utmDatum = datumToRelative([effectiveDatum.long, effectiveDatum.lat]);
+    const utmDatum = datumToRelative([datum.long, datum.lat]);
 
     const precomputed = metric.precompute ? metric.precompute(samples) : undefined;
     const [min, max] = resolveRange(metric, samples, precomputed);
@@ -54,7 +53,7 @@ export default function HeatmapLayer({id, samples, metricId, datum, onHover}: He
       });
     }
     return {type: 'FeatureCollection', features};
-  }, [samples, metric, effectiveDatum]);
+  }, [samples, metric, datum]);
 
   if (featureCollection.features.length === 0) return null;
 

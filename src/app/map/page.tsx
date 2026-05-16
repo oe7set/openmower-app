@@ -7,6 +7,7 @@ import {outerCardStyles} from '@/lib/cardStyles';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {AreaProps} from '@/stores/schemas';
 import {featuresToMap, mapToFeatures} from '@/utils/area-converter';
+import {useEffectiveDatum} from '@/utils/datum';
 import {CheckCircle as CheckIcon, LocationOn as LocationIcon, PlayArrow as PlayIcon} from '@mui/icons-material';
 import {useTheme} from '@mui/material';
 import {area as turfArea} from '@turf/area';
@@ -27,17 +28,18 @@ export default function MapPage() {
   // In edit mode, the draw controll will take care of updates.
   const mapData = useSelectedMower((s) => s?.map);
   const rpc = useSelectedMower((s) => s?.rpc);
+  const {datum: effectiveDatum} = useEffectiveDatum();
   useEffect(() => {
     if (draw && mapData && !editMode) {
-      const features = mapToFeatures(mapData);
+      const features = mapToFeatures(mapData, effectiveDatum);
       draw.set(withDisplaySortKeys(features));
       setFeatures(features, false);
     }
-  }, [draw, mapData, editMode, setFeatures]);
+  }, [draw, mapData, editMode, setFeatures, effectiveDatum]);
 
   const saveMapToMower = useCallback(async () => {
-    await rpc!.map.replace(featuresToMap(mapData!, features));
-  }, [rpc, mapData, features]);
+    await rpc!.map.replace(featuresToMap(mapData!, features, effectiveDatum));
+  }, [rpc, mapData, features, effectiveDatum]);
 
   const areas = useMemo(
     () => features.features.filter((feature) => feature.geometry.type === 'Polygon') as Feature<Polygon, AreaProps>[],

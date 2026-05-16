@@ -141,7 +141,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
     if (!prevBounds || (!editMode && !shallow(prevBounds, bounds.current))) {
       fitToBounds(true);
     }
-  }, [features, mapData.datum, editMode, fitToBounds]);
+  }, [features, realDatum, editMode, fitToBounds]);
 
   // Mirror source for hover hit-testing. Uses promoteId so layer-scoped mouse
   // events return a usable string id.
@@ -420,49 +420,50 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             <AreasList areas={areas} onClose={() => setShowAreaList(false)} />
           </Dialog>
         )}
-        {mapData.docking_stations.map((station) => (
-          <DockingStationMarker key={station.id} station={station} datum={datum} isDocked={isDocked} />
-        ))}
-        <MapOverlayLayer datum={mapData.datum} />
-        {showMowingTrail && (
+        {realDatum &&
+          mapData.docking_stations.map((station) => (
+            <DockingStationMarker key={station.id} station={station} datum={realDatum} isDocked={isDocked} />
+          ))}
+        {realDatum && <MapOverlayLayer datum={realDatum} />}
+        {realDatum && showMowingTrail && (
           <PathLayer
             id="mowing-trail"
             paths={[mowingTrail]}
-            datum={mapData.datum}
+            datum={realDatum}
             color={pathColors.trail}
             width={2}
             opacity={0.7}
           />
         )}
-        {showCoveragePath && (
+        {realDatum && showCoveragePath && (
           <PathLayer
             id="coverage-path"
             paths={coveragePath.map((stripe) => stripe.points)}
-            datum={mapData.datum}
+            datum={realDatum}
             color={pathColors.coverage}
             width={2}
             opacity={0.6}
           />
         )}
-        {showPlannedPath && (
+        {realDatum && showPlannedPath && (
           <PathLayer
             id="planned-path"
             paths={[plannedPath]}
-            datum={mapData.datum}
+            datum={realDatum}
             color={pathColors.planned}
             width={3}
             opacity={0.95}
             dashed
           />
         )}
-        {showPatternPreview && (
+        {realDatum && showPatternPreview && (
           <PatternPreviewLayer
             mowingAreas={areas.filter((a) => a.properties.type === 'mow')}
             outlines={patternOutlines}
-            datum={mapData.datum}
+            datum={realDatum}
           />
         )}
-        <MowerMarker datum={datum} isDocked={isDocked} />
+        {realDatum && <MowerMarker datum={realDatum} isDocked={isDocked} />}
         {showTeleop && <TeleopControls />}
         {currentState === 'AREA_RECORDING' && !editMode && <RecordingPanel />}
         <DialogOutlet />

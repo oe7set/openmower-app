@@ -2,7 +2,7 @@
 
 import {Page, PageContent, PageHeader} from '@/components/page';
 import {useSelectedMower} from '@/stores/mowersStore';
-import {fallbackDatum, type MapData} from '@/stores/schemas';
+import {useEffectiveDatum} from '@/utils/datum';
 import bbox from '@turf/bbox';
 import {featureCollection, point} from '@turf/helpers';
 import type {Feature, Point} from 'geojson';
@@ -60,7 +60,7 @@ const INITIAL_STRIDE = 4;
 export default function HeatmapPage() {
   const theme = useTheme();
   const rpc = useSelectedMower((s) => s?.rpc);
-  const datum: MapData['datum'] = useSelectedMower((s) => s?.map.datum);
+  const {datum} = useEffectiveDatum();
   const hasCap = useSelectedMower((s) => s?.hasCapability('telemetry.list_sessions') ?? false);
 
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
@@ -151,8 +151,7 @@ export default function HeatmapPage() {
   // (the ref mutation alone is invisible to React).
   useEffect(() => {
     if (!mapRef.current) return;
-    const datumRef = datum ?? fallbackDatum;
-    const utm = datumToRelative([datumRef.long, datumRef.lat]);
+    const utm = datumToRelative([datum.long, datum.lat]);
     const points: Feature<Point>[] = [];
     for (const id of selected) {
       const arr = samplesRef.current!.get(id);

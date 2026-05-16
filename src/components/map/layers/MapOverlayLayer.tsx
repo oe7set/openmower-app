@@ -1,7 +1,7 @@
 'use client';
 
 import {useSelectedMower} from '@/stores/mowersStore';
-import {fallbackDatum, type MapData, type OverlayColor, type OverlayPolygon} from '@/stores/schemas';
+import {type MapData, type OverlayColor, type OverlayPolygon} from '@/stores/schemas';
 import {datumToRelative, pointsToAbsolute} from '@/utils/coordinates';
 import {useTheme} from '@mui/material';
 import type {Feature, FeatureCollection, LineString, Polygon} from 'geojson';
@@ -9,12 +9,11 @@ import {RLayer, RSource} from 'maplibre-react-components';
 import {useMemo} from 'react';
 
 interface MapOverlayLayerProps {
-  datum?: MapData['datum'];
+  datum: NonNullable<MapData['datum']>;
 }
 
 export default function MapOverlayLayer({datum}: MapOverlayLayerProps) {
   const polygons = useSelectedMower((s) => s?.mapOverlay.polygons ?? []);
-  const effectiveDatum = datum ?? fallbackDatum;
   const theme = useTheme();
 
   // xbot_msgs MapOverlayPolygon.color is encoded as 0|1|2 (red|green|blue).
@@ -30,7 +29,7 @@ export default function MapOverlayLayer({datum}: MapOverlayLayerProps) {
 
   const featureCollection = useMemo<FeatureCollection>(() => {
     if (polygons.length === 0) return {type: 'FeatureCollection', features: []};
-    const utmDatum = datumToRelative([effectiveDatum.long, effectiveDatum.lat]);
+    const utmDatum = datumToRelative([datum.long, datum.lat]);
     const features: Feature[] = polygons.map((poly: OverlayPolygon, idx) => {
       const coords = pointsToAbsolute(poly.poly, utmDatum);
       // Closed polygons need their first point repeated at the end so MapLibre
@@ -50,7 +49,7 @@ export default function MapOverlayLayer({datum}: MapOverlayLayerProps) {
       };
     });
     return {type: 'FeatureCollection', features};
-  }, [polygons, effectiveDatum, colorByCode]);
+  }, [polygons, datum, colorByCode]);
 
   if (featureCollection.features.length === 0) return null;
 

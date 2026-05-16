@@ -16,7 +16,7 @@ interface PatternPreviewLayerProps {
   mowingAreas: Feature<Polygon, AreaProps>[];
   /** Outline data already in mower-relative metres (drives the geometry). */
   outlines: XY[][];
-  datum?: MapData['datum'];
+  datum: NonNullable<MapData['datum']>;
 }
 
 // Optional preview of the planned mowing pattern. Reads

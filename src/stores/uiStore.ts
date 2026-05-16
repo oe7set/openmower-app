@@ -52,11 +52,11 @@ export const useUiStore = create<UiStore>()(
       version: 1,
       // v0 used 'white' as the plain-background style; rename it on load.
       migrate: (persisted, version) => {
-        const state = persisted as Partial<UiStore> & {mapStyle?: string};
+        const state = persisted as Record<string, unknown>;
         if (version < 1 && state?.mapStyle === 'white') {
           state.mapStyle = 'plain';
         }
-        return state as UiStore;
+        return state as unknown as UiStore;
       },
     },
   ),
