@@ -1,8 +1,17 @@
 import type {Field as JsfField} from '@remoteoss/json-schema-form';
 
+export type SettingSource = 'env' | 'yaml-user' | 'yaml-hw' | 'ros';
+export type SettingRestart = 'none' | 'service' | 'stack';
+
 export interface BaseField extends JsfField {
   'x-param'?: string;
   'x-unit'?: string;
+  'x-source'?: SettingSource;
+  'x-yaml-path'?: string;
+  'x-ros-param'?: string;
+  'x-environment-variable'?: string | null;
+  'x-restart-required'?: SettingRestart;
+  'x-readonly-via-ui'?: boolean;
 }
 
 export interface RadioField extends BaseField {

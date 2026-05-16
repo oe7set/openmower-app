@@ -9,12 +9,13 @@ interface NumberFieldProps {
 }
 
 export function NumberField({field, path}: NumberFieldProps) {
-  const {controllerField, hasError, onChange} = useSettingsField(path);
+  const readOnly = !!field['x-readonly-via-ui'];
+  const {controllerField, hasError, onChange} = useSettingsField(path, '', readOnly);
 
   const unit = field['x-unit'] ? ` (${field['x-unit']})` : '';
 
   return (
-    <SettingsFieldWrapper path={path} currentValue={controllerField.value}>
+    <SettingsFieldWrapper path={path} currentValue={controllerField.value} field={field}>
       <Box sx={{mb: 2}}>
         <MuiTextField
           fullWidth
@@ -27,6 +28,7 @@ export function NumberField({field, path}: NumberFieldProps) {
             onChange(isNaN(parsed) ? '' : parsed);
           }}
           error={hasError}
+          disabled={readOnly}
           helperText={field.description}
           inputProps={{
             min: field.minimum,

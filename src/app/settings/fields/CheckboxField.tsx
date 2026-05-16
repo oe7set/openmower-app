@@ -9,10 +9,11 @@ interface CheckboxFieldProps {
 }
 
 export function CheckboxField({field, path}: CheckboxFieldProps) {
-  const {controllerField, hasError, onChange} = useSettingsField(path, false);
+  const readOnly = !!field['x-readonly-via-ui'];
+  const {controllerField, hasError, onChange} = useSettingsField(path, false, readOnly);
 
   return (
-    <SettingsFieldWrapper path={path} currentValue={controllerField.value}>
+    <SettingsFieldWrapper path={path} currentValue={controllerField.value} field={field}>
       <Box sx={{mb: 2}}>
         <FormControlLabel
           control={
@@ -21,6 +22,7 @@ export function CheckboxField({field, path}: CheckboxFieldProps) {
               onChange={(e) => onChange(e.target.checked)}
               name={field.name}
               color={hasError ? 'error' : 'primary'}
+              disabled={readOnly}
             />
           }
           label={field.label}

@@ -2,14 +2,17 @@ import {RestartAlt as RestartAltIcon} from '@mui/icons-material';
 import {Box, FormHelperText, IconButton, Tooltip} from '@mui/material';
 import type {FieldError} from 'react-hook-form';
 import {useFormContext} from 'react-hook-form';
+import {SourceChip} from './SourceChip';
 import {useSettingsContext} from './SettingsContext';
 import {deepEqual, getNestedValue} from './settingsUtils';
+import type {BaseField} from './types';
 
 interface SettingsFieldWrapperProps {
   path: string;
   currentValue: unknown;
   children: React.ReactNode;
   formatDefaultValue?: (value: unknown) => string;
+  field?: BaseField;
 }
 
 export function SettingsFieldWrapper({
@@ -17,6 +20,7 @@ export function SettingsFieldWrapper({
   currentValue,
   children,
   formatDefaultValue,
+  field,
 }: SettingsFieldWrapperProps) {
   const {defaults, confirmedFields, onFieldReset} = useSettingsContext();
   const {
@@ -70,7 +74,7 @@ export function SettingsFieldWrapper({
         transition: 'all 0.2s ease',
       }}
     >
-      <Box sx={{flex: 1}}>
+      <Box sx={{flex: 1, minWidth: 0}}>
         {children}
         {hasError && errorMessage && (
           <FormHelperText error sx={{mt: -1, mb: 1, mx: 0}}>
@@ -78,6 +82,11 @@ export function SettingsFieldWrapper({
           </FormHelperText>
         )}
       </Box>
+      {field && field['x-source'] && (
+        <Box sx={{mt: 1.5, mr: 0.5}}>
+          <SourceChip field={field} />
+        </Box>
+      )}
       <Tooltip title={tooltipTitle} placement="left">
         <span>
           <IconButton

@@ -27,6 +27,7 @@ import {FormProvider, useForm, useFormContext, useWatch} from 'react-hook-form';
 import {parse as parseYaml} from 'yaml';
 import {buildEnvVarMap, buildEnvVarReverseMap, flattenToEnvVars, unflattenFromEnvVars} from './envVarMapping';
 import {FieldsetField} from './fields/FieldsetField';
+import {aggregateRestart, collectLeafIndex, routeChanges, unflattenSnapshots, type LeafInfo} from './paramRouting';
 import RestartServiceButton from './RestartServiceButton';
 import {SettingsContext} from './SettingsContext';
 import {StickyBreadcrumb} from './StickyBreadcrumb';
@@ -45,6 +46,7 @@ interface FormState {
   defaults: Record<string, unknown>;
   handleValidation: (value: Record<string, unknown>) => ValidationResult;
   envVarMap: Record<string, string>;
+  leafIndex: Map<string, LeafInfo>;
 }
 
 export function SettingsForm() {
@@ -95,25 +97,53 @@ export function SettingsForm() {
         // the form structure.
         const envVarMap = buildEnvVarMap(mergedSchema);
 
+        // Schema-driven leaf index — covers env / yaml-* / ros sources with
+        // the new x-* annotations. Used for source-aware save routing and
+        // the live ROS-param snapshot fetched below.
+        const leafIndex = collectLeafIndex(mergedSchema);
+
         // …and the reverse map so we can take the live env-var snapshot from
         // mower_config.sh (rpc.meta.config.get) and rebuild the nested values
         // tree the form is rendered against.
         const reverseMap = buildEnvVarReverseMap(mergedSchema);
-        const liveValues = unflattenFromEnvVars(
-          (currentRaw ?? {}) as Record<string, unknown>,
-          reverseMap,
-        );
+        const envSnapshot = (currentRaw ?? {}) as Record<string, unknown>;
+        const liveValues = unflattenFromEnvVars(envSnapshot, reverseMap);
+
+        // Pull the live values for every ROS-sourced leaf in one shot.
+        // Capability-gate on the new RPC so older backends don't break: a
+        // missing params.get_many is equivalent to "no live ROS values yet".
+        const rosNames: string[] = [];
+        for (const leaf of leafIndex.values()) {
+          if (leaf.source === 'ros' && leaf.rosParam) rosNames.push(leaf.rosParam);
+        }
+        let rosSnapshot: Record<string, unknown> = {};
+        if (rosNames.length > 0) {
+          try {
+            const result = await (
+              rpc.params.get_many({names: rosNames}) as Promise<{values?: Record<string, unknown>}>
+            );
+            rosSnapshot = (result?.values ?? {}) as Record<string, unknown>;
+          } catch (e) {
+            console.warn('params.get_many() failed; ROS-sourced settings will fall back to schema defaults:', e);
+          }
+        }
+
+        const schemaDrivenLive = unflattenSnapshots(envSnapshot, rosSnapshot, leafIndex);
 
         // Live values win over YAML defaults — that's what the user actually
         // configured. The "Reset to default" affordance still compares against
         // YAML so the user sees what's diverged from the system baseline.
-        const defaults = merge({}, yamlDefaults, liveValues);
+        // Order: yaml defaults → legacy env-var-derived live values →
+        // schema-driven live values (which includes ROS-sourced fields the
+        // legacy reverse map cannot resolve).
+        const defaults = merge({}, yamlDefaults, liveValues, schemaDrivenLive);
 
         const newFormState = {
           fields: formFields as unknown as Field[],
           defaults,
           handleValidation: handleValidation as (value: Record<string, unknown>) => ValidationResult,
           envVarMap,
+          leafIndex,
         };
         setFormState(newFormState);
       } catch (err) {
@@ -225,6 +255,7 @@ function SettingsFormContent({formState}: {formState: FormState}) {
             )}
           </PageHeader>
           <PageContent>
+            <RestartHint confirmedFields={confirmedFields} leafIndex={formState.leafIndex} />
             <Box sx={{display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2}}>
               <RestartServiceButton />
               <Button
@@ -233,17 +264,59 @@ function SettingsFormContent({formState}: {formState: FormState}) {
                 disabled={!hasChanges || !isValid || saving || !rpc}
                 onClick={async () => {
                   if (!rpc) return;
-                  const flatChanges = flattenToEnvVars(getConfirmedValues(), formState.envVarMap);
-                  if (Object.keys(flatChanges).length === 0) {
-                    toast.warning('No changes mapped to environment variables');
+                  const confirmedValues = getConfirmedValues();
+                  // New routing path covers ROS + YAML simultaneously.
+                  const {yamlChanges, rosChanges, skipped} = routeChanges(
+                    confirmedValues,
+                    formState.leafIndex,
+                  );
+                  // Legacy fallback: any leaf the schema-walker didn't see
+                  // (older deployments shipped a schema without x-source)
+                  // is still routed through the OM_*-based flatten so older
+                  // mowers keep working even before they're updated.
+                  const legacyEnvChanges = flattenToEnvVars(confirmedValues, formState.envVarMap);
+                  const mergedYamlChanges: Record<string, unknown> = {...legacyEnvChanges, ...yamlChanges};
+
+                  const totalChanges = Object.keys(mergedYamlChanges).length + Object.keys(rosChanges).length;
+                  if (totalChanges === 0) {
+                    toast.warning('No saveable changes detected');
                     return;
                   }
+
                   setSaving(true);
                   try {
-                    await rpc.meta.config.set({changes: flatChanges as never});
-                    toast.success(
-                      `Saved ${Object.keys(flatChanges).length} setting(s). Restart the mower service to apply.`,
+                    let yamlReportedSkipped: string[] = [];
+                    if (Object.keys(mergedYamlChanges).length > 0) {
+                      const result = (await rpc.meta.config.set({changes: mergedYamlChanges as never})) as {
+                        skipped_keys?: string[];
+                      };
+                      yamlReportedSkipped = result?.skipped_keys ?? [];
+                    }
+
+                    const rosResults = await Promise.allSettled(
+                      Object.entries(rosChanges).map(([name, value]) =>
+                        rpc.params.set({name, value: value as never}),
+                      ),
                     );
+                    const rosFailures = rosResults.filter((r) => r.status === 'rejected').length;
+
+                    const totalSkipped = skipped.length + yamlReportedSkipped.length;
+                    if (rosFailures > 0) {
+                      toast.error(`Saved ${totalChanges - rosFailures} of ${totalChanges} — ${rosFailures} ROS update(s) failed`);
+                    } else if (totalSkipped > 0) {
+                      toast.warning(
+                        `Saved ${totalChanges} setting(s); ${totalSkipped} read-only key(s) skipped`,
+                      );
+                    } else {
+                      const restart = aggregateRestart(confirmedFieldsRef.current, formState.leafIndex);
+                      const suffix =
+                        restart === 'service'
+                          ? ' Restart the mower service to apply YAML-backed changes.'
+                          : restart === 'stack'
+                            ? ' Restart the full Compose stack to apply.'
+                            : '';
+                      toast.success(`Saved ${totalChanges} setting(s).${suffix}`);
+                    }
                     confirmedFieldsRef.current.clear();
                     setConfirmedFields(new Set());
                   } catch (err) {
@@ -338,6 +411,36 @@ function SettingsAccordion({fieldset}: {fieldset: FieldsetFieldType}) {
 }
 
 import {useSettingsContext} from './SettingsContext';
+
+function RestartHint({
+  confirmedFields,
+  leafIndex,
+}: {
+  confirmedFields: Set<string>;
+  leafIndex: Map<string, LeafInfo>;
+}) {
+  const level = useMemo(() => aggregateRestart(confirmedFields, leafIndex), [confirmedFields, leafIndex]);
+  if (level === 'none' || confirmedFields.size === 0) return null;
+  const message =
+    level === 'stack'
+      ? 'Some pending changes are stored in the Docker Compose .env file. After saving you must restart the full Compose stack on the host (e.g. via dockge or `docker compose up -d`) for them to take effect.'
+      : 'Some pending changes are stored in YAML on the host. After saving, restart the openmower service for them to take effect.';
+  return (
+    <Box
+      sx={{
+        mb: 2,
+        p: 1.5,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: level === 'stack' ? 'error.light' : 'warning.light',
+        bgcolor: level === 'stack' ? 'error.main' : 'warning.main',
+        backgroundColor: level === 'stack' ? 'rgba(244, 67, 54, 0.06)' : 'rgba(237, 108, 2, 0.06)',
+      }}
+    >
+      <Typography variant="body2">{message}</Typography>
+    </Box>
+  );
+}
 
 interface ConfirmedValuesDebugProps {
   confirmedFieldsRef: React.RefObject<Set<string>>;

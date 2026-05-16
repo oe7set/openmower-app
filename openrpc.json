@@ -161,6 +161,36 @@
       }
     },
     {
+      "name": "params.get_many",
+      "summary": "Read multiple ROS parameters at once. Names are filtered against the schema's x-ros-param whitelist on the server.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "names",
+          "description": "List of fully-qualified ROS parameter names to read.",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Object containing the read values keyed by parameter name. Names not in the whitelist or not currently set on the parameter server are absent or null.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "values": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": ["values"]
+        }
+      }
+    },
+    {
       "name": "params.set",
       "summary": "Set a single ROS parameter, optionally triggering dynamic_reconfigure on the owning node.",
       "paramStructure": "by-name",

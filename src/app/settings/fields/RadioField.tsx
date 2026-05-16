@@ -9,7 +9,8 @@ interface RadioFieldProps {
 }
 
 export function RadioField({field, path}: RadioFieldProps) {
-  const {controllerField, hasError, onChange} = useSettingsField(path);
+  const readOnly = !!field['x-readonly-via-ui'];
+  const {controllerField, hasError, onChange} = useSettingsField(path, '', readOnly);
 
   const formatDefaultValue = (value: unknown) => {
     const match = field.options?.find((o) => o.value === value);
@@ -17,8 +18,13 @@ export function RadioField({field, path}: RadioFieldProps) {
   };
 
   return (
-    <SettingsFieldWrapper path={path} currentValue={controllerField.value} formatDefaultValue={formatDefaultValue}>
-      <FormControl component="fieldset" error={hasError} sx={{mb: 3, width: '100%'}}>
+    <SettingsFieldWrapper
+      path={path}
+      currentValue={controllerField.value}
+      formatDefaultValue={formatDefaultValue}
+      field={field}
+    >
+      <FormControl component="fieldset" error={hasError} sx={{mb: 3, width: '100%'}} disabled={readOnly}>
         <FormLabel component="legend">{field.label}</FormLabel>
         {field.description && <FormHelperText sx={{mt: 0.5, mb: 1, mx: 0}}>{field.description}</FormHelperText>}
         <RadioGroup name={field.name} value={controllerField.value ?? ''} onChange={(e) => onChange(e.target.value)}>

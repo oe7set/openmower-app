@@ -9,7 +9,8 @@ interface SelectFieldProps {
 }
 
 export function SelectField({field, path}: SelectFieldProps) {
-  const {controllerField, hasError, onChange} = useSettingsField(path);
+  const readOnly = !!field['x-readonly-via-ui'];
+  const {controllerField, hasError, onChange} = useSettingsField(path, '', readOnly);
 
   const formatDefaultValue = (value: unknown) => {
     const match = field.options?.find((o) => o.value === value);
@@ -19,9 +20,14 @@ export function SelectField({field, path}: SelectFieldProps) {
   const labelId = `${path}-label`;
 
   return (
-    <SettingsFieldWrapper path={path} currentValue={controllerField.value} formatDefaultValue={formatDefaultValue}>
+    <SettingsFieldWrapper
+      path={path}
+      currentValue={controllerField.value}
+      formatDefaultValue={formatDefaultValue}
+      field={field}
+    >
       <Box sx={{mb: 2}}>
-        <FormControl fullWidth error={hasError}>
+        <FormControl fullWidth error={hasError} disabled={readOnly}>
           <InputLabel id={labelId}>{field.label}</InputLabel>
           <Select
             labelId={labelId}

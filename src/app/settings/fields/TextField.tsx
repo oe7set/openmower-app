@@ -9,10 +9,11 @@ interface TextFieldProps {
 }
 
 export function TextField({field, path}: TextFieldProps) {
-  const {controllerField, hasError, onChange} = useSettingsField(path);
+  const readOnly = !!field['x-readonly-via-ui'];
+  const {controllerField, hasError, onChange} = useSettingsField(path, '', readOnly);
 
   return (
-    <SettingsFieldWrapper path={path} currentValue={controllerField.value}>
+    <SettingsFieldWrapper path={path} currentValue={controllerField.value} field={field}>
       <Box sx={{mb: 2}}>
         <MuiTextField
           fullWidth
@@ -22,6 +23,7 @@ export function TextField({field, path}: TextFieldProps) {
           value={controllerField.value ?? ''}
           onChange={(e) => onChange(e.target.value)}
           error={hasError}
+          disabled={readOnly}
           helperText={field.description}
           slotProps={{
             formHelperText: {
