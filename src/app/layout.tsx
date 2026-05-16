@@ -1,9 +1,10 @@
 import {loadAppConfig} from '@/lib/actions';
 import {AppRouterCacheProvider} from '@mui/material-nextjs/v15-appRouter';
-import type {Metadata} from 'next';
+import type {Metadata, Viewport} from 'next';
 import {DM_Mono, DM_Sans} from 'next/font/google';
 import {DialogProvider} from 'react-dialog-async';
 import {ConfigInitializer} from '../components/ConfigInitializer';
+import {ServiceWorkerRegister} from '../components/ServiceWorkerRegister';
 import ThemeRegistry from '../components/ThemeRegistry';
 import AppShell from '../components/navigation/AppShell';
 import './globals.css';
@@ -27,12 +28,12 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: 'OpenMower',
   description: 'Control and monitor your OpenMower robotic lawnmower',
-  icons: {
-    icon: [
-      {url: '/logo-square.svg', type: 'image/svg+xml'},
-      {url: '/favicon.ico', sizes: 'any'},
-    ],
-  },
+  applicationName: 'OpenMower',
+  appleWebApp: {capable: true, title: 'OpenMower', statusBarStyle: 'black-translucent'},
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0C5E2B',
 };
 
 export default async function RootLayout({
@@ -54,6 +55,7 @@ export default async function RootLayout({
           }}
         />
         <ConfigInitializer config={config} />
+        <ServiceWorkerRegister />
         <AppRouterCacheProvider>
           <ThemeRegistry>
             <DialogProvider>
