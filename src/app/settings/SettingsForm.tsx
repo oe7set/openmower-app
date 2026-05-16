@@ -27,6 +27,7 @@ import {FormProvider, useForm, useFormContext, useWatch} from 'react-hook-form';
 import {parse as parseYaml} from 'yaml';
 import {buildEnvVarMap, buildEnvVarReverseMap, flattenToEnvVars, unflattenFromEnvVars} from './envVarMapping';
 import {FieldsetField} from './fields/FieldsetField';
+import {HardwareConfirmDialog} from './HardwareConfirmDialog';
 import {aggregateRestart, collectLeafIndex, routeChanges, unflattenSnapshots, type LeafInfo} from './paramRouting';
 import RestartServiceButton from './RestartServiceButton';
 import {SettingsContext} from './SettingsContext';
@@ -184,10 +185,15 @@ export function SettingsForm() {
   return <SettingsFormContent formState={formState} />;
 }
 
+interface PendingHwConfirm {
+  affectedFields: Array<{label: string; path: string}>;
+}
+
 function SettingsFormContent({formState}: {formState: FormState}) {
   const toast = useToast();
   const rpc = useSelectedMower((s) => s?.rpc);
   const [saving, setSaving] = useState(false);
+  const [pendingHwConfirm, setPendingHwConfirm] = useState<PendingHwConfirm | null>(null);
 
   const methods = useForm({
     defaultValues: formState.defaults,
@@ -234,6 +240,78 @@ function SettingsFormContent({formState}: {formState: FormState}) {
   const hasChanges = confirmedFields.size > 0;
   const {isValid} = methods.formState;
 
+  async function performSave() {
+    if (!rpc) return;
+    const confirmedValues = getConfirmedValues();
+    const {yamlChanges, rosChanges, skipped} = routeChanges(confirmedValues, formState.leafIndex);
+    // Legacy fallback: any leaf the schema-walker didn't see (older
+    // deployments shipped a schema without x-source) is still routed
+    // through the OM_*-based flatten so older mowers keep working even
+    // before they're updated.
+    const legacyEnvChanges = flattenToEnvVars(confirmedValues, formState.envVarMap);
+    const mergedYamlChanges: Record<string, unknown> = {...legacyEnvChanges, ...yamlChanges};
+
+    const totalChanges = Object.keys(mergedYamlChanges).length + Object.keys(rosChanges).length;
+    if (totalChanges === 0) {
+      toast.warning('No saveable changes detected');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let yamlReportedSkipped: Array<{key: string; reason: string}> = [];
+      if (Object.keys(mergedYamlChanges).length > 0) {
+        const result = (await rpc.meta.config.set({changes: mergedYamlChanges as never})) as {
+          skipped_keys?: Array<{key: string; reason: string} | string>;
+        };
+        // Tolerate the old string[] shape from pre-v1.2.7 backends so the
+        // UI doesn't blow up when running against an older mower image.
+        yamlReportedSkipped = (result?.skipped_keys ?? []).map((s) =>
+          typeof s === 'string' ? {key: s, reason: 'unknown'} : s,
+        );
+      }
+
+      const rosResults = await Promise.allSettled(
+        Object.entries(rosChanges).map(([name, value]) => rpc.params.set({name, value: value as never})),
+      );
+      const rosFailures = rosResults.filter((r) => r.status === 'rejected').length;
+
+      const totalSkipped = skipped.length + yamlReportedSkipped.length;
+      if (rosFailures > 0) {
+        toast.error(`Saved ${totalChanges - rosFailures} of ${totalChanges} — ${rosFailures} ROS update(s) failed`);
+      } else if (totalSkipped > 0) {
+        // Group skipped keys by reason so the toast is actionable: tells the
+        // user *why* a value didn't make it (out-of-range, readonly, etc.)
+        // instead of just a count.
+        const byReason = new Map<string, string[]>();
+        for (const s of yamlReportedSkipped) {
+          const list = byReason.get(s.reason) ?? [];
+          list.push(s.key);
+          byReason.set(s.reason, list);
+        }
+        const summary = Array.from(byReason.entries())
+          .map(([reason, keys]) => `${reason}: ${keys.join(', ')}`)
+          .join(' | ');
+        toast.warning(`Saved ${totalChanges - totalSkipped} of ${totalChanges}; skipped — ${summary}`);
+      } else {
+        const restart = aggregateRestart(confirmedFieldsRef.current, formState.leafIndex);
+        const suffix =
+          restart === 'service'
+            ? ' Restart the mower service to apply YAML-backed changes.'
+            : restart === 'stack'
+              ? ' Restart the full Compose stack to apply.'
+              : '';
+        toast.success(`Saved ${totalChanges} setting(s).${suffix}`);
+      }
+      confirmedFieldsRef.current.clear();
+      setConfirmedFields(new Set());
+    } catch (err) {
+      toast.error(`Save failed: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <SettingsContext.Provider
       value={{
@@ -262,67 +340,23 @@ function SettingsFormContent({formState}: {formState: FormState}) {
                 variant="contained"
                 startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
                 disabled={!hasChanges || !isValid || saving || !rpc}
-                onClick={async () => {
+                onClick={() => {
                   if (!rpc) return;
-                  const confirmedValues = getConfirmedValues();
-                  // New routing path covers ROS + YAML simultaneously.
-                  const {yamlChanges, rosChanges, skipped} = routeChanges(
-                    confirmedValues,
-                    formState.leafIndex,
-                  );
-                  // Legacy fallback: any leaf the schema-walker didn't see
-                  // (older deployments shipped a schema without x-source)
-                  // is still routed through the OM_*-based flatten so older
-                  // mowers keep working even before they're updated.
-                  const legacyEnvChanges = flattenToEnvVars(confirmedValues, formState.envVarMap);
-                  const mergedYamlChanges: Record<string, unknown> = {...legacyEnvChanges, ...yamlChanges};
-
-                  const totalChanges = Object.keys(mergedYamlChanges).length + Object.keys(rosChanges).length;
-                  if (totalChanges === 0) {
-                    toast.warning('No saveable changes detected');
-                    return;
+                  // Pre-flight: gate hardware-geometry edits behind a
+                  // confirm dialog. The actual save runs in performSave()
+                  // either directly (no HW fields touched) or via the
+                  // dialog's Confirm callback.
+                  const hwFields: Array<{label: string; path: string}> = [];
+                  for (const path of confirmedFieldsRef.current) {
+                    const leaf = formState.leafIndex.get(path);
+                    if (leaf?.source === 'yaml-hw') {
+                      hwFields.push({label: path.split('.').pop() ?? path, path});
+                    }
                   }
-
-                  setSaving(true);
-                  try {
-                    let yamlReportedSkipped: string[] = [];
-                    if (Object.keys(mergedYamlChanges).length > 0) {
-                      const result = (await rpc.meta.config.set({changes: mergedYamlChanges as never})) as {
-                        skipped_keys?: string[];
-                      };
-                      yamlReportedSkipped = result?.skipped_keys ?? [];
-                    }
-
-                    const rosResults = await Promise.allSettled(
-                      Object.entries(rosChanges).map(([name, value]) =>
-                        rpc.params.set({name, value: value as never}),
-                      ),
-                    );
-                    const rosFailures = rosResults.filter((r) => r.status === 'rejected').length;
-
-                    const totalSkipped = skipped.length + yamlReportedSkipped.length;
-                    if (rosFailures > 0) {
-                      toast.error(`Saved ${totalChanges - rosFailures} of ${totalChanges} — ${rosFailures} ROS update(s) failed`);
-                    } else if (totalSkipped > 0) {
-                      toast.warning(
-                        `Saved ${totalChanges} setting(s); ${totalSkipped} read-only key(s) skipped`,
-                      );
-                    } else {
-                      const restart = aggregateRestart(confirmedFieldsRef.current, formState.leafIndex);
-                      const suffix =
-                        restart === 'service'
-                          ? ' Restart the mower service to apply YAML-backed changes.'
-                          : restart === 'stack'
-                            ? ' Restart the full Compose stack to apply.'
-                            : '';
-                      toast.success(`Saved ${totalChanges} setting(s).${suffix}`);
-                    }
-                    confirmedFieldsRef.current.clear();
-                    setConfirmedFields(new Set());
-                  } catch (err) {
-                    toast.error(`Save failed: ${(err as Error).message}`);
-                  } finally {
-                    setSaving(false);
+                  if (hwFields.length > 0) {
+                    setPendingHwConfirm({affectedFields: hwFields});
+                  } else {
+                    void performSave();
                   }
                 }}
               >
@@ -343,6 +377,15 @@ function SettingsFormContent({formState}: {formState: FormState}) {
             />
           </PageContent>
         </Page>
+        <HardwareConfirmDialog
+          open={pendingHwConfirm !== null}
+          affectedFields={pendingHwConfirm?.affectedFields ?? []}
+          onCancel={() => setPendingHwConfirm(null)}
+          onConfirm={() => {
+            setPendingHwConfirm(null);
+            void performSave();
+          }}
+        />
       </FormProvider>
     </SettingsContext.Provider>
   );

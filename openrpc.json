@@ -148,13 +148,26 @@
       ],
       "result": {
         "name": "result",
-        "description": "Counts plus the OM_* keys that were actually written (`updated_keys`) and those that were dropped because they have no writable YAML mapping (`skipped_keys`). The frontend uses `updated_keys` to highlight saved fields and `skipped_keys` to surface a warning when a request mentions an unknown or read-only key.",
+        "description": "Counts plus the keys that were actually written (`updated_keys`) and those that were dropped (`skipped_keys`). Each skipped entry carries a reason: `readonly` (x-readonly-via-ui), `env-source` / `ros-source` (wrong write path), `unknown` (not in schema or mapping), `no-yaml-path` (schema entry without a target) or `out-of-range` (numeric value outside the schema's minimum/maximum).",
         "schema": {
           "type": "object",
           "properties": {
             "updated": {"type": "integer"},
             "updated_keys": {"type": "array", "items": {"type": "string"}},
-            "skipped_keys": {"type": "array", "items": {"type": "string"}}
+            "skipped_keys": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["key", "reason"],
+                "properties": {
+                  "key": {"type": "string"},
+                  "reason": {
+                    "type": "string",
+                    "enum": ["readonly", "env-source", "ros-source", "unknown", "no-yaml-path", "out-of-range"]
+                  }
+                }
+              }
+            }
           },
           "required": ["updated", "updated_keys", "skipped_keys"]
         }
