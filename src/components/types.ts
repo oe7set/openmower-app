@@ -15,9 +15,12 @@ export interface MowerConfig {
   mqtt_prefix: string;
   description: string;
   // Optional MJPEG stream URL of an external camera service (e.g. mjpg-streamer
-  // running alongside the mower). When unset or empty, the drive page hides
-  // the camera card entirely.
+  // running alongside the mower). Used as a fallback when whep_url is unset.
   camera_url?: string;
+  // Optional WHEP (WebRTC) endpoint, e.g. http://<host>:8889/cam/whep served by
+  // the lowlatency-cam-streamer sidecar. Takes priority over camera_url. When
+  // both are unset, the drive page hides the camera card entirely.
+  whep_url?: string;
 }
 
 export interface AppConfig {

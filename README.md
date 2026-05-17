@@ -84,33 +84,98 @@ You can now access the app at `http://<mower-ip>:3000` in your browser.
 
 # Drive page camera (optional)
 
-The Drive page can embed a live MJPEG stream from a USB webcam plugged into the Raspberry Pi (or any other reachable MJPEG endpoint). The app itself does not produce the stream — it just displays whatever URL you configure. When the URL is unset, the camera card stays hidden and the rest of the page is unaffected.
+The Drive page can embed a live USB camera stream. Two backends are supported:
+
+1. **WebRTC (recommended)** via the [`lowlatency-cam-streamer`](https://github.com/oe7set/lowlatency-cam-streamer) sidecar — H.264, hardware-encoded on the Pi, sub-200 ms latency, holds up over flaky WiFi.
+2. **MJPEG (legacy fallback)** via [`mjpg-streamer`](https://github.com/jacksonliam/mjpg-streamer) — simple but bandwidth-heavy and brittle on bad links.
+
+When both endpoints are configured the WebRTC path takes priority. When neither is configured the camera card stays hidden and the rest of the page is unaffected.
+
+# Low-latency WebRTC camera (recommended)
+
+The [`lowlatency-cam-streamer`](https://github.com/oe7set/lowlatency-cam-streamer) container captures a UVC USB camera, hardware-encodes H.264 (Pi `v4l2h264enc` / Intel VAAPI / x264 fallback), and exposes a standard WHEP endpoint that the Drive page consumes through a `<video>` element.
+
+## 1. Add the streamer to your Compose stack
+
+Add the following service alongside the `app` service you set up under [OpenMowerOS v2](#openmoweros-v2):
+
+```yaml
+  camera_streamer:
+    image: ghcr.io/oe7set/lowlatency-cam-streamer:1
+    container_name: camera_streamer
+    restart: unless-stopped
+    network_mode: host          # WebRTC ICE candidates need the host's IPs
+    privileged: true            # /dev/video* access
+    volumes:
+      - /dev:/dev
+    environment:
+      LATENCY_PROFILE: balanced  # low | balanced | robust
+      CAMERA_DEVICE: /dev/video0
+      CAMERA_WIDTH: 1920
+      CAMERA_HEIGHT: 1080
+      CAMERA_FRAMERATE: 30
+```
+
+`LATENCY_PROFILE` picks defaults for keyframe interval, FEC, jitter buffer hint, and bitrate floor/cap. Pick `low` for tightest teleop, `robust` for bad WiFi. Every individual knob can be overridden via its own environment variable — see the [streamer README](https://github.com/oe7set/lowlatency-cam-streamer#latency-profiles).
+
+## 2. (Optional) Tell the app where the WHEP endpoint lives
+
+By default the app derives the WHEP URL from the request host:
+
+```
+http://<request-host>:8889/cam/whep
+```
+
+That works out of the box when the streamer runs colocated with the app on its standard port. Set `MOWER_WHEP_URL` explicitly only when the streamer is on a different host, port, or stream name:
+
+```yaml
+  app:
+    image: ghcr.io/xtech/openmower-app:edge
+    container_name: app
+    ports:
+      - 3000:3000
+    environment:
+      - MOWER_WHEP_URL=http://<mower-ip>:8889/cam/whep
+    restart: unless-stopped
+```
+
+| Variable           | Default                                  | Description                                              |
+|--------------------|------------------------------------------|----------------------------------------------------------|
+| `MOWER_WHEP_URL`   | `http://<request-host>:8889/cam/whep`    | WHEP endpoint of the streamer. Empty string disables it. |
+
+> [!NOTE]
+> The Drive page shows live stats next to the camera card (resolution, framerate, bitrate, RTT) so you can confirm the connection at a glance.
+
+# MJPEG camera (legacy fallback)
+
+Use the MJPEG path if you can't run the WebRTC streamer (e.g. very old browsers, or a camera attached to a separate MJPEG box). It only kicks in when `MOWER_WHEP_URL` is empty *and* `MOWER_CAMERA_URL` is set.
 
 ## 1. Stream the camera with `mjpg-streamer`
 
 Plug a UVC-compatible USB camera into the Pi. The kernel exposes it as `/dev/video0` (run `ls /dev/video*` to confirm; multi-camera or built-in CSI devices may bump the number).
 
-Add a second service to the same Docker Compose stack you edited under [OpenMowerOS v2](#openmowerosv2). The example below uses [`ghcr.io/jacksonliam/mjpg-streamer:master`](https://github.com/jacksonliam/mjpg-streamer) — adjust the image, resolution, framerate, or port to taste:
+Add a second service to the same Docker Compose stack you edited under [OpenMowerOS v2](#openmoweros-v2). The example below uses [`davidhamm/mjpg-streamer`](https://hub.docker.com/r/davidhamm/mjpg-streamer) — adjust the image, resolution, framerate, or port to taste:
 
 ```yaml
   mjpg-streamer:
-    image: ghcr.io/jacksonliam/mjpg-streamer:master
+    image: davidhamm/mjpg-streamer
     container_name: mjpg-streamer
     restart: unless-stopped
     devices:
       - /dev/video0:/dev/video0
     ports:
       - 8081:8080
-    command: >
-      -i "input_uvc.so -d /dev/video0 -r 640x480 -f 15 -q 75"
-      -o "output_http.so -p 8080 -w /usr/local/share/mjpg-streamer/www"
+    environment:
+      - RESOLUTION=1280x720
+      - ENV_RESOLUTION=1280x720
+      - ENV_FPS=30
+      - ENV_CAMERA=/dev/video0
 ```
 
 Things to adjust:
 
-- **Device path** — change `/dev/video0` on both sides if your camera enumerates elsewhere.
-- **Resolution / framerate** — `-r 640x480 -f 15` is a safe starting point on a CM4. Higher resolutions cost CPU and may stutter; drop the framerate before the resolution.
-- **Quality** — `-q 75` (JPEG quality 0–100). Lower it if WLAN is the bottleneck.
+- **Device path** — change `/dev/video0` (in both `devices:` and `ENV_CAMERA`) if your camera enumerates elsewhere.
+- **Resolution / framerate** — `1280x720 @ 30 fps` works well on a CM4. Higher resolutions cost CPU and may stutter; drop the framerate before the resolution. The `RESOLUTION` and `ENV_RESOLUTION` variables both have to be set — the image uses `RESOLUTION` for the input plugin and `ENV_RESOLUTION` for the output plugin.
 - **Host port** — `8081:8080` exposes the streamer at `http://<mower-ip>:8081`. Change the *host* side (left of the colon) if `8081` is already taken; leave the container side at `8080`.
 
 > [!NOTE]
