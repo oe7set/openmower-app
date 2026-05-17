@@ -150,10 +150,6 @@ export default function DrivePage() {
           </Card>
         </Box>
 
-        {/* Camera — only renders when MOWER_CAMERA_URL is set. Sits above the
-            mode card so the operator sees the stream while reaching for the
-            joystick or the mode-switch buttons. */}
-        <CameraCard />
 
         {/* Mode-switch — gated purely on current_state. The joystick stream is
             silently discarded by mower_logic in any state where
@@ -235,6 +231,12 @@ export default function DrivePage() {
             )}
           </CardContent>
         </Card>
+		
+		{/* Camera — only renders when MOWER_CAMERA_URL is set. Sits above the
+            mode card so the operator sees the stream while reaching for the
+            joystick or the mode-switch buttons. */}
+        <CameraCard />
+
 
         {/* Joystick — gets the rest of the viewport */}
         <Card sx={{mt: 2, py: 6, display: 'flex', justifyContent: 'center'}}>
