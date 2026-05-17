@@ -18,7 +18,7 @@ export default function SubtractDialog({
   data,
 }: AsyncDialogProps<SubtractDialogProps, [string, boolean]>) {
   const {selectedAreas} = data;
-  const [targetAreaId, setTargetAreaId] = useState<string>(() => getBiggestArea(selectedAreas)!.id as string);
+  const [targetAreaId, setTargetAreaId] = useState<string>(() => getBiggestArea(selectedAreas).id as string);
   const [keepAllAreas, setKeepAllAreas] = useState(true);
   return (
     <AreaOperationDialog

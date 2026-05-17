@@ -6,14 +6,14 @@ import {nearestPointOnLine} from '@turf/nearest-point-on-line';
 import {pointOnFeature} from '@turf/point-on-feature';
 import {polygonToLine} from '@turf/polygon-to-line';
 import {polygonize} from '@turf/polygonize';
-import {Feature, Polygon, type LineString, type MultiPolygon, type Position} from 'geojson';
+import {Feature, GeoJsonProperties, Polygon, type LineString, type MultiPolygon, type Position} from 'geojson';
 import {customAlphabet} from 'nanoid';
 import sweeplineIntersections from 'sweepline-intersections';
 
 export const generateId = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 32);
 
-export const getBiggestArea = (areas: Feature<Polygon, AreaProps>[]) => {
-  if (areas.length === 0) return null;
+export const getBiggestArea = <P extends GeoJsonProperties = AreaProps>(areas: Feature<Polygon, P>[]) => {
+  if (areas.length === 0) throw new Error('Cannot get biggest area from empty array');
   return areas.reduce(
     (max, curr) => {
       const currArea = turfArea(curr);

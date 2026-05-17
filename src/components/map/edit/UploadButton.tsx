@@ -1,8 +1,9 @@
 'use client';
 
 import ControlButton from '@/components/map/ControlButton';
-import {useMapboxDraw} from '@/contexts/MapContext';
+import {useFitToBounds, useMapboxDraw, useMapContext, withDisplaySortKeys} from '@/contexts/MapContext';
 import {CloudUpload as UploadIcon} from '@mui/icons-material';
+import {featureCollection} from '@turf/helpers';
 import type {FeatureCollection} from 'geojson';
 import {useRef} from 'react';
 import {useDialog} from 'react-dialog-async';
@@ -10,6 +11,8 @@ import {UploadModal} from './UploadModal';
 
 export function UploadButton() {
   const draw = useMapboxDraw();
+  const {features, setFeatures, editMode, setEditMode} = useMapContext();
+  const fitToBounds = useFitToBounds();
   const uploadModal = useDialog(UploadModal);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,8 +39,13 @@ export function UploadButton() {
     const result = await uploadModal.open(geojson);
     if (!result || !draw) return;
 
-    if (result.clearExisting) draw.deleteAll();
-    result.features.forEach((feature) => draw.add(feature));
+    if (!editMode) setEditMode(true);
+
+    const existingFeatures = result.clearExisting ? [] : features.features;
+    const merged = featureCollection([...existingFeatures, ...result.features]);
+    draw.set(withDisplaySortKeys(merged));
+    setFeatures(merged);
+    requestAnimationFrame(() => fitToBounds());
   };
 
   return (

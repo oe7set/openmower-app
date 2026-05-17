@@ -1,7 +1,7 @@
 'use client';
 
 import {useMap} from '@/contexts/MapContext';
-import {type MapData} from '@/stores/schemas';
+import type {Datum} from '@/stores/schemas';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import {Box} from '@mui/material';
 import {RMarker} from 'maplibre-react-components';
@@ -22,7 +22,7 @@ interface MapMarkerProps {
   heading: number;
   /** Physical size of the marker in meters (used for zoom-based scaling) */
   sizeM: number;
-  datum: NonNullable<MapData['datum']>;
+  datum: Datum;
   className?: string;
   children: (sizePx: number) => ReactNode;
 }

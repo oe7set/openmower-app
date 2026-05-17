@@ -1,27 +1,25 @@
 'use client';
 
-import {useMapboxDraw, useMapContext, useMapHover} from '@/contexts/MapContext';
+import {useFitToBounds, useMapboxDraw, useMapContext, useMapHover} from '@/contexts/MapContext';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useDatumCacheStore} from '@/stores/datumCacheStore';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
-import {fallbackDatum, MapData, type AreaProps} from '@/stores/schemas';
+import {MapData, type AreaProps} from '@/stores/schemas';
 import {useUiStore} from '@/stores/uiStore';
 import type {AreaFeature} from '@/types/geojson';
 import {generateId, splitPolygonWithLine} from '@/utils/area-utils';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import StaticMode from '@mapbox/mapbox-gl-draw-static-mode';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
-import {Box, Dialog, useMediaQuery, useTheme, type SxProps} from '@mui/material';
-import bbox from '@turf/bbox';
+import {Box, useMediaQuery, useTheme, type SxProps} from '@mui/material';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
 import {ActivityIcon, FocusIcon, GridIcon, LayoutListIcon, PencilIcon, PlayCircleIcon, RouteIcon, SquareIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useEffectEvent, useMemo, useRef, useState} from 'react';
 import {DialogOutlet, useDialog} from 'react-dialog-async';
-import {shallow} from 'zustand/vanilla/shallow';
 import AreasList from './AreasList';
 import {mapPalette} from './colors';
 import ControlButton from './ControlButton';
@@ -32,16 +30,17 @@ import {drawStyles} from './drawStyles';
 import {AreaSettingsDialog} from './edit/AreaSettingsDialog';
 import {DownloadButton} from './edit/DownloadButton';
 import EditControls from './edit/EditControls';
+import {IssuesButton} from './edit/IssuesButton';
 import {UploadButton} from './edit/UploadButton';
 import MapOverlayLayer from './layers/MapOverlayLayer';
 import PathLayer from './layers/PathLayer';
 import PatternPreviewLayer from './layers/PatternPreviewLayer';
+import MapDialog from './MapDialog';
 import {mapStyles} from './mapStyles';
 import MapStyleSelector from './MapStyleSelector';
 import MowerMarker from './MowerMarker';
 import RecordingPanel from './recording/RecordingPanel';
 import TeleopControls from './teleop/TeleopControls';
-import type {BBox} from './types';
 
 interface MowerMapProps {
   mapData: MapData;
@@ -53,9 +52,11 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const mowerId = useSelectedMower((s) => s?.id);
   const cachedDatum = useDatumCacheStore((s) => (mowerId ? s.byMower[mowerId] : undefined));
   const realDatum = mapData.datum ?? cachedDatum;
-  const datum = realDatum ?? fallbackDatum;
   const hasRealDatum = Boolean(realDatum);
-  const {id, editMode, setEditMode, features, setFeatures, drawWorkflow, setDrawWorkflow} = useMapContext();
+  // MapContext owns bounds/fitToBounds/issues — its datum is mirrored from
+  // MapPage's useEffectiveDatum hook. We use realDatum for our path/marker
+  // layers (only render them when a real datum is known, never the fallback).
+  const {id, editMode, setEditMode, features, setFeatures, drawWorkflow, setDrawWorkflow, bounds} = useMapContext();
   const mapRef = useRef<Map>(null);
   const draw = useMapboxDraw();
   const [hoveredId, setHoveredId] = useMapHover();
@@ -75,7 +76,6 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
     () => features.features.filter((feature) => feature.geometry.type === 'Polygon') as Feature<Polygon, AreaProps>[],
     [features],
   );
-  const bounds = useRef<BBox>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const pathColors = mapPalette(theme);
@@ -102,6 +102,8 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   }, [mapData.areas, showPatternPreview]);
   const [popupAreaId, setPopupAreaId] = useState<string | null>(null);
   const areaSettingsDialog = useDialog(AreaSettingsDialog);
+  const padding = useMemo(() => ({top: 10, bottom: 10, left: 60, right: showAreaList ? 390 : 60}), [showAreaList]);
+  const fitToBounds = useFitToBounds();
 
   // The popup needs a stable reference to the polygon and its index in the
   // mowing-areas list (so map.start_in_area picks the right one). We derive
@@ -117,31 +119,13 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
     return mowAreas.findIndex((a) => a.id === popupAreaId);
   }, [popupArea, areas, popupAreaId]);
 
-  const fitToBounds = useCallback(
-    (immediate: boolean = false) => {
-      if (!mapRef.current || !bounds.current) return;
-      mapRef.current.fitBounds(bounds.current, {
-        padding: {top: 10, bottom: 10, left: 60, right: showAreaList ? 390 : 60},
-        duration: immediate ? 0 : 1000,
-      });
-    },
-    [showAreaList],
-  );
+  const onBoundsChanged = useEffectEvent(() => {
+    if (!editMode) fitToBounds(true, padding);
+  });
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    const prevBounds = bounds.current;
-    if (features.features.length > 0) {
-      bounds.current = bbox(features) as BBox;
-    } else {
-      const {long, lat} = datum;
-      bounds.current = [long, lat, long, lat] as BBox;
-    }
-    // If the bounds have changed, fit to bounds (except in edit mode).
-    if (!prevBounds || (!editMode && !shallow(prevBounds, bounds.current))) {
-      fitToBounds(true);
-    }
-  }, [features, realDatum, editMode, fitToBounds]);
+    onBoundsChanged();
+  }, [bounds]);
 
   // Mirror source for hover hit-testing. Uses promoteId so layer-scoped mouse
   // events return a usable string id.
@@ -345,7 +329,12 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
 
         {/* Right controls */}
         <RFullscreenControl />
-        <ControlButton position="top-right" icon={FocusIcon} title="Fit to bounds" onClick={() => fitToBounds()} />
+        <ControlButton
+          position="top-right"
+          icon={FocusIcon}
+          title="Fit to bounds"
+          onClick={() => fitToBounds(false, padding)}
+        />
         <MapStyleSelector />
         <ControlButton
           position="top-right"
@@ -385,6 +374,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         />
         <DownloadButton />
         <UploadButton />
+        <IssuesButton />
 
         {/* Overlays */}
         {!isMobile && showAreaList && (
@@ -401,16 +391,15 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
           </Box>
         )}
         {isMobile && (
-          <Dialog
+          <MapDialog
             open={showAreaList}
             onClose={() => setShowAreaList(false)}
-            disablePortal
             slotProps={{
               paper: {
                 sx: {
                   margin: 0,
-                  width: 'calc(100% - 3rem)',
-                  height: 'calc(100% - 10rem)',
+                  width: 'calc(100% - 2rem)',
+                  height: 'calc(100% - 2rem)',
                   maxWidth: 'none',
                   maxHeight: 'none',
                 },
@@ -418,7 +407,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             }}
           >
             <AreasList areas={areas} onClose={() => setShowAreaList(false)} />
-          </Dialog>
+          </MapDialog>
         )}
         {realDatum &&
           mapData.docking_stations.map((station) => (

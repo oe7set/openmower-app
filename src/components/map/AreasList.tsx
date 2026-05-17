@@ -8,7 +8,7 @@ import {
   withDisplaySortKeys,
 } from '@/contexts/MapContext';
 import {AreaProps} from '@/stores/schemas';
-import {DndContext, DragEndEvent, DragOverlay, type DragStartEvent} from '@dnd-kit/core';
+import {closestCenter, DndContext, DragEndEvent, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragStartEvent} from '@dnd-kit/core';
 import {restrictToFirstScrollableAncestor, restrictToVerticalAxis} from '@dnd-kit/modifiers';
 import {arrayMove, SortableContext, verticalListSortingStrategy} from '@dnd-kit/sortable';
 import {Card, CardContent, CardHeader, IconButton, List, useTheme} from '@mui/material';
@@ -33,6 +33,11 @@ export default function AreasList({areas, onClose}: {areas: Feature<Polygon, Are
   const map = useMap();
   const anchorId = useRef<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, {activationConstraint: {distance: 5}}),
+    useSensor(TouchSensor, {activationConstraint: {delay: 250, tolerance: 8}}),
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -132,6 +137,8 @@ export default function AreasList({areas, onClose}: {areas: Feature<Polygon, Are
       <CardContent sx={{flex: 1, p: 0, overflowY: 'auto', '&:last-child': {pb: 0}}}>
         <List sx={{minHeight: '100%', p: 0, userSelect: 'none'}}>
           <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
@@ -144,7 +151,7 @@ export default function AreasList({areas, onClose}: {areas: Feature<Polygon, Are
                   selected={editMode && selectedIds.includes(area.id as string)}
                   hovered={hoveredId === (area.id as string)}
                   showDragHandle={editMode}
-                  onSelect={handleSelect}
+                  onSelect={editMode ? handleSelect : undefined}
                   dragCount={getDragCount(area.id as string)}
                   onMouseEnter={() => setHoveredId(area.id as string)}
                   onMouseLeave={() => setHoveredId(null)}

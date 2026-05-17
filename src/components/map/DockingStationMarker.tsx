@@ -1,6 +1,6 @@
 'use client';
 
-import {type MapData} from '@/stores/schemas';
+import {type Datum} from '@/stores/schemas';
 import {useTheme} from '@mui/material';
 import MapMarker from './MapMarker';
 import {MOWER_LENGTH_M, MowerArrow} from './MowerMarker';
@@ -15,7 +15,7 @@ interface DockingStation {
 
 interface DockingStationMarkerProps {
   station: DockingStation;
-  datum: NonNullable<MapData['datum']>;
+  datum: Datum;
   isDocked?: boolean;
 }
 

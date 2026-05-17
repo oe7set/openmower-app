@@ -26,6 +26,7 @@ export interface AreaItemProps {
 
 interface SortableItemProps {
   ref?: React.Ref<HTMLLIElement>;
+  handleRef?: React.Ref<HTMLDivElement>;
   style?: React.CSSProperties;
   listeners?: DraggableSyntheticListeners;
   dragging?: boolean;
@@ -41,6 +42,7 @@ export default function AreaItem({
   onMouseLeave,
   dragCount,
   ref,
+  handleRef,
   style,
   listeners,
   dragging = false,
@@ -52,6 +54,7 @@ export default function AreaItem({
   const isGroupDragPlaceholder = !!dragCount && dragCount > 0;
   return (
     <ListItem
+      ref={ref}
       style={style}
       {...props}
       onClick={onSelect ? (e) => onSelect(area.id as string, e) : undefined}
@@ -59,7 +62,7 @@ export default function AreaItem({
       onMouseLeave={onMouseLeave}
       sx={{
         p: 0,
-        cursor: 'pointer',
+        cursor: onSelect ? 'pointer' : 'default',
         borderBottom: '1px solid',
         borderColor: theme.palette.divider,
         backgroundColor: dragging
@@ -73,14 +76,16 @@ export default function AreaItem({
               : undefined,
         color: dragging || selected ? theme.palette.secondary.contrastText : undefined,
         opacity: dragCount === 0 ? 0.25 : inactive ? 0.5 : 1,
-        touchAction: 'none',
+        touchAction: 'pan-y',
         '&:last-child': {
           borderBottom: 'none',
         },
-        '&:hover': {
-          backgroundColor: theme.palette.secondary.main,
-          color: theme.palette.secondary.contrastText,
-        },
+        ...(onSelect && {
+          '&:hover': {
+            backgroundColor: theme.palette.secondary.main,
+            color: theme.palette.secondary.contrastText,
+          },
+        }),
       }}
     >
       <Box sx={{width: '100%', display: 'flex'}}>
@@ -100,7 +105,7 @@ export default function AreaItem({
         </Box>
         {showDragHandle && (
           <Box
-            ref={ref}
+            ref={handleRef}
             {...listeners}
             onClick={(e) => e.stopPropagation()}
             sx={{
@@ -109,10 +114,11 @@ export default function AreaItem({
               alignItems: 'center',
               justifyContent: 'center',
               width: 48,
+              touchAction: 'none',
               color: dragging ? theme.palette.secondary.contrastText : theme.palette.text.secondary,
             }}
           >
-            <MenuIcon size={16} />
+            <MenuIcon size={16} style={{pointerEvents: 'none'}} />
           </Box>
         )}
       </Box>

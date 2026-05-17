@@ -14,7 +14,7 @@ interface MergeDialogProps {
 
 export default function MergeDialog({isOpen, handleClose, data}: AsyncDialogProps<MergeDialogProps, string>) {
   const {selectedAreas} = data;
-  const [targetAreaId, setTargetAreaId] = useState<string>(() => getBiggestArea(selectedAreas)!.id as string);
+  const [targetAreaId, setTargetAreaId] = useState<string>(() => getBiggestArea(selectedAreas).id as string);
   return (
     <AreaOperationDialog open={isOpen} handleClose={handleClose} confirmText="Merge areas" response={targetAreaId}>
       <Typography variant="subtitle1">Merge areas into:</Typography>

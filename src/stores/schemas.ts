@@ -83,11 +83,18 @@ export type State = z.infer<typeof stateSchema>;
 // Map
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+export const datumSchema = z.object({
+  lat: z.number(),
+  long: z.number(),
+  height: z.number(),
+});
+export type Datum = z.infer<typeof datumSchema>;
+
 const pointSchema = z.object({x: z.number(), y: z.number()});
 const polygonSchema = z.array(pointSchema);
 const areaSchema = z.object({
   id: z.string(),
-  properties: z.object({
+  properties: z.looseObject({
     name: z.string().optional(),
     type: z.enum(['mow', 'nav', 'obstacle', 'draft']).default('draft'),
     active: z.boolean().default(true),
@@ -109,13 +116,7 @@ const dockingStationSchema = z.object({
 });
 
 export const mapSchema = z.object({
-  datum: z
-    .object({
-      lat: z.number(),
-      long: z.number(),
-      height: z.number(),
-    })
-    .optional(),
+  datum: datumSchema.optional(),
   areas: z.array(areaSchema),
   docking_stations: z.array(dockingStationSchema),
 });
@@ -205,13 +206,7 @@ export const legacyAreaSchema = z.object({
 });
 
 export const legacyMapSchema = z.object({
-  datum: z
-    .object({
-      lat: z.number(),
-      long: z.number(),
-      height: z.number(),
-    })
-    .optional(),
+  datum: datumSchema.optional(),
   docking_pose: z.object({
     heading: z.number().nullable(),
     x: z.number(),
@@ -309,7 +304,7 @@ export const mapDefaults: MapData = {
   docking_stations: [],
 };
 
-export const fallbackDatum = {lat: 48.0, long: 11.0, height: 0} satisfies MapData['datum'];
+export const fallbackDatum = {lat: 48.0, long: 11.0, height: 0} satisfies Datum;
 
 export const stateDefaults: State = {
   battery_percentage: 100,

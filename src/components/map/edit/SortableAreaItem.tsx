@@ -3,7 +3,7 @@ import {CSS} from '@dnd-kit/utilities';
 import AreaItem, {AreaItemProps} from '../AreaItem';
 
 export default function SortableAreaItem(props: AreaItemProps) {
-  const {attributes, listeners, setNodeRef, transform, transition, isDragging} = useSortable({
+  const {attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging} = useSortable({
     id: props.area.id as string,
   });
 
@@ -13,6 +13,14 @@ export default function SortableAreaItem(props: AreaItemProps) {
   };
 
   return (
-    <AreaItem {...props} ref={setNodeRef} style={style} {...attributes} listeners={listeners} dragging={isDragging} />
+    <AreaItem
+      {...props}
+      ref={setNodeRef}
+      handleRef={setActivatorNodeRef}
+      style={style}
+      {...attributes}
+      listeners={listeners}
+      dragging={isDragging}
+    />
   );
 }

@@ -1,10 +1,46 @@
+import {fallbackDatum, type Datum} from '@/stores/schemas';
+import {detectFeatureIssues, type MapIssue} from '@/utils/map-issues';
 import MapboxDraw, {type DrawMode} from '@mapbox/mapbox-gl-draw';
+import bbox from '@turf/bbox';
 import {featureCollection} from '@turf/helpers';
 import {Feature, FeatureCollection} from 'geojson';
 import {Draft, produce} from 'immer';
 import {useMap as useMapLibreMap} from 'maplibre-react-components';
-import {createContext, Dispatch, SetStateAction, useCallback, useContext, useEffect, useRef, useState} from 'react';
+import React, {
+  createContext,
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {Updater, useImmer} from 'use-immer';
+
+type Bounds = [west: number, south: number, east: number, north: number];
+
+function useBounds(features: FeatureCollection, datum: Datum) {
+  const previousBoundsRef = useRef<Bounds | null>(null);
+  return useMemo(() => {
+    const newBounds: Bounds =
+      features.features.length > 0 ? (bbox(features) as Bounds) : [datum.long, datum.lat, datum.long, datum.lat];
+
+    const previous = previousBoundsRef.current;
+    if (previous && boundsEqual(previous, newBounds)) {
+      return previous;
+    }
+
+    previousBoundsRef.current = newBounds;
+    return newBounds;
+  }, [features]);
+}
+
+function boundsEqual(a: Bounds, b: Bounds): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+}
 
 type SetFeatures = (
   recipe: FeatureCollection | ((draft: Draft<FeatureCollection>) => void),
@@ -13,8 +49,12 @@ type SetFeatures = (
 
 interface MapContextType {
   id: string;
+  datum: Datum;
+  setDatum: Dispatch<SetStateAction<Datum>>;
   features: FeatureCollection;
   setFeatures: SetFeatures;
+  bounds: Bounds;
+  issues: MapIssue[];
   editMode: boolean;
   setEditMode: Dispatch<SetStateAction<boolean>>;
   drawMode: DrawMode;
@@ -57,6 +97,7 @@ export function withDisplaySortKeys(fc: FeatureCollection): FeatureCollection {
 export const MapContext = createContext<MapContextType | undefined>(undefined);
 
 export const MapContextProvider = ({id, children}: {id: string; children: React.ReactNode}) => {
+  const [datum, setDatum] = useState<Datum>(fallbackDatum);
   // Note that here is where we keep the correct order of features (mapbox-gl-draw doesn't maintain it).
   const [features, setFeaturesImmer] = useImmer<FeatureCollection>(featureCollection([]));
   const [editMode, setEditMode] = useState(false);
@@ -67,6 +108,9 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [past, setPast] = useState<FeatureCollection[]>([]);
   const [future, setFuture] = useState<FeatureCollection[]>([]);
+
+  const bounds = useBounds(features, datum);
+  const issues = useMemo(() => features.features.flatMap(detectFeatureIssues), [features]);
 
   // Keep a ref to the current features so undo/redo callbacks don't go stale.
   const featuresRef = useRef(features);
@@ -117,8 +161,12 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
     <MapContext
       value={{
         id,
+        datum,
+        setDatum,
         features,
         setFeatures,
+        bounds,
+        issues,
         editMode,
         setEditMode,
         drawMode,
@@ -157,6 +205,14 @@ export function useMap() {
 export function useMapboxDraw() {
   const map = useMap();
   return map?._controls.find((control) => control instanceof MapboxDraw) ?? null;
+}
+
+export function useFitToBounds() {
+  const map = useMap();
+  const {bounds} = useMapContext();
+  return useEffectEvent((immediate: boolean = false, padding = {top: 10, bottom: 10, left: 60, right: 60}) => {
+    map?.fitBounds(bounds, {padding, duration: immediate ? 0 : 1000});
+  });
 }
 
 export function useMapHover(): [string | null, Dispatch<SetStateAction<string | null>>] {

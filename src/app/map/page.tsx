@@ -21,14 +21,20 @@ export function formatAreaSize(squareMeters: number): string {
 
 export default function MapPage() {
   const theme = useTheme();
-  const draw = useMapboxDraw();
-  const {features, setFeatures, editMode} = useMapContext();
-
-  // In display mode, send the features directly to the map.
-  // In edit mode, the draw controll will take care of updates.
   const mapData = useSelectedMower((s) => s?.map);
   const rpc = useSelectedMower((s) => s?.rpc);
   const {datum: effectiveDatum} = useEffectiveDatum();
+  const {features, setFeatures, setDatum, editMode} = useMapContext();
+  const draw = useMapboxDraw();
+
+  // Mirror the effective datum (cached + fallback) into MapContext so the
+  // refactored bounds/issues/markers consume the same value as the converter.
+  useEffect(() => {
+    setDatum(effectiveDatum);
+  }, [effectiveDatum, setDatum]);
+
+  // In display mode, send the features directly to the map.
+  // In edit mode, the draw control will take care of updates.
   useEffect(() => {
     if (draw && mapData && !editMode) {
       const features = mapToFeatures(mapData, effectiveDatum);

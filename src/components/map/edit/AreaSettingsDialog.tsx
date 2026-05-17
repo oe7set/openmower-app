@@ -45,6 +45,7 @@ export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
     const feature = draw.get(selectedIds[0])!;
     const index = features.features.findIndex((f) => f.id === feature.id);
     feature.properties = {
+      ...feature.properties,
       name,
       type,
       active,
