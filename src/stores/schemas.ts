@@ -259,6 +259,47 @@ export type MowingSession = z.infer<typeof mowingSessionSchema>;
 export type MowingSessions = z.infer<typeof mowingSessionsSchema>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Notification / Event center
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Mirrors xbot_msgs/Event.msg as serialised by xbot_monitoring's events_io
+// module. Severity travels as a string on the wire — the C++ side translates
+// the uint8 SEVERITY_* constants to "info|warning|error|critical" before
+// publishing.
+export const eventSeveritySchema = z.enum(['info', 'warning', 'error', 'critical']);
+export type EventSeverity = z.infer<typeof eventSeveritySchema>;
+
+export const eventSchema = z.object({
+  id: z.string(),
+  ts_ms: z.number(),
+  severity: eventSeveritySchema,
+  type: z.string(),
+  source: z.string(),
+  summary: z.string(),
+  // The bridge always emits an object (possibly empty) so the app never has
+  // to distinguish "missing" from "empty". Keep additionalProperties open so
+  // producers can attach arbitrary structured payloads.
+  details: z.record(z.string(), z.unknown()).default({}),
+  acked: z.boolean().default(false),
+});
+export type EventEntry = z.infer<typeof eventSchema>;
+
+export const eventsSnapshotSchema = z.object({
+  events: z.array(eventSchema),
+  unread: z.number(),
+});
+export type EventsSnapshot = z.infer<typeof eventsSnapshotSchema>;
+
+// Numeric severity ordering used for the severity_min filter and for
+// comparisons (e.g. "fire toast when severity >= warning").
+export const eventSeverityRank: Record<EventSeverity, number> = {
+  info: 0,
+  warning: 1,
+  error: 2,
+  critical: 3,
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Defaults
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

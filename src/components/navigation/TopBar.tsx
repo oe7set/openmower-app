@@ -4,8 +4,19 @@ import {useToast} from '@/hooks/useToast';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useConnectionDiagnostic, useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore, type ThemeMode} from '@/stores/uiStore';
-import {Brightness4, DarkMode, LightMode, Menu as MenuIcon, SettingsBrightness, Warning} from '@mui/icons-material';
+import {useUnreadForActive} from '@/stores/notificationsStore';
 import {
+  Brightness4,
+  DarkMode,
+  LightMode,
+  Menu as MenuIcon,
+  NotificationsActive,
+  NotificationsNone,
+  SettingsBrightness,
+  Warning,
+} from '@mui/icons-material';
+import {
+  Badge,
   Box,
   Dialog,
   DialogActions,
@@ -41,6 +52,7 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
   const setThemeMode = useUiStore((s) => s.setThemeMode);
   const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
   const diag = useConnectionDiagnostic();
+  const unreadEvents = useUnreadForActive();
 
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
@@ -150,6 +162,19 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
             </IconButton>
           </Tooltip>
         )}
+
+        <Tooltip title={unreadEvents > 0 ? `${unreadEvents} unread notification${unreadEvents === 1 ? '' : 's'}` : 'Notifications'}>
+          <IconButton
+            aria-label="Notifications"
+            onClick={() => {
+              if (pathname !== '/notifications') router.push('/notifications');
+            }}
+          >
+            <Badge badgeContent={unreadEvents} color="error" max={99}>
+              {unreadEvents > 0 ? <NotificationsActive /> : <NotificationsNone />}
+            </Badge>
+          </IconButton>
+        </Tooltip>
 
         <Tooltip title={`Theme: ${themeMode}`}>
           <IconButton aria-label="Change theme" onClick={(e) => setThemeAnchor(e.currentTarget)}>

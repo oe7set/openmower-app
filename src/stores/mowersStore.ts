@@ -15,6 +15,8 @@ import {
   AreaType,
   capabilitiesSchema,
   coveragePathSchema,
+  eventSchema,
+  eventsSnapshotSchema,
   LegacyArea,
   LegacyMapData,
   legacyMapSchema,
@@ -41,6 +43,7 @@ import {
   type VersionInfo,
 } from './schemas';
 import {useDatumCacheStore} from './datumCacheStore';
+import {useNotificationsStore} from './notificationsStore';
 import {pushSensorValue} from './sensorsStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
@@ -232,6 +235,8 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'mowing_trail/json');
             client.subscribe(clientMower.prefix + 'mowing_sessions/json');
             client.subscribe(clientMower.prefix + 'version/json');
+            client.subscribe(clientMower.prefix + 'events/json');
+            client.subscribe(clientMower.prefix + 'events/stream');
             client.subscribe(clientMower.prefix + 'rpc/response');
           }
           // The map/json topic doesn't carry the GPS datum (mower_map_service
@@ -386,6 +391,20 @@ export const useMowersStore = create<MowersStore>()(
                 });
               } catch (e) {
                 console.warn('[mowersStore] mowing_sessions/json parse failed:', e);
+              }
+            } else if (partialTopic === 'events/json') {
+              try {
+                const parsed = eventsSnapshotSchema.parse(JSON.parse(payload.toString()));
+                useNotificationsStore.getState().onSnapshot(mowers[idx].id, parsed);
+              } catch (e) {
+                console.warn('[mowersStore] events/json parse failed:', e);
+              }
+            } else if (partialTopic === 'events/stream') {
+              try {
+                const parsed = eventSchema.parse(JSON.parse(payload.toString()));
+                useNotificationsStore.getState().onStream(mowers[idx].id, parsed);
+              } catch (e) {
+                console.warn('[mowersStore] events/stream parse failed:', e);
               }
             } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
               // sensors/<id>/data is plaintext: a stringified number for DOUBLE

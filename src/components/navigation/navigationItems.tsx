@@ -5,6 +5,7 @@ import {
   Dashboard as DashboardIcon,
   Description as LogsIcon,
   Map as MapIcon,
+  Notifications as NotificationsIcon,
   Sensors as SensorIcon,
   Settings as SettingsIcon,
   SportsEsports as DriveIcon,
@@ -22,6 +23,7 @@ export function createNavigationItems(): NavigationItem[] {
     {label: 'Statistics', icon: <StatsIcon />, path: '/statistics', isGlobal: false},
     {label: 'Heatmap', icon: <HeatmapIcon />, path: '/heatmap', isGlobal: false},
     {label: 'Logs', icon: <LogsIcon />, path: '/logs', isGlobal: false},
+    {label: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', isGlobal: false},
     {label: 'Settings', icon: <SettingsIcon />, path: '/settings', isGlobal: true},
     {label: 'Debug', icon: <BugReportIcon />, path: '/debug', isGlobal: true},
   ];
