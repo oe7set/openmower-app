@@ -357,7 +357,18 @@ function CameraFrame({
           )}
         </Box>
 
-        <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 1}}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{
+            display: 'block',
+            mt: 1,
+            fontSize: '0.65rem',
+            lineHeight: 1.3,
+            opacity: 0.8,
+            '& code': {fontSize: '0.65rem'},
+          }}
+        >
           {footer}
         </Typography>
       </CardContent>

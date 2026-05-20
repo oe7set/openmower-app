@@ -28,6 +28,7 @@ import {parse as parseYaml} from 'yaml';
 import {buildEnvVarMap, buildEnvVarReverseMap, flattenToEnvVars, unflattenFromEnvVars} from './envVarMapping';
 import {FieldsetField} from './fields/FieldsetField';
 import {HardwareConfirmDialog} from './HardwareConfirmDialog';
+import {NotReadyDialog} from './NotReadyDialog';
 import {aggregateRestart, collectLeafIndex, routeChanges, unflattenSnapshots, type LeafInfo} from './paramRouting';
 import RestartServiceButton from './RestartServiceButton';
 import {SettingsContext} from './SettingsContext';
@@ -194,6 +195,7 @@ function SettingsFormContent({formState}: {formState: FormState}) {
   const rpc = useSelectedMower((s) => s?.rpc);
   const [saving, setSaving] = useState(false);
   const [pendingHwConfirm, setPendingHwConfirm] = useState<PendingHwConfirm | null>(null);
+  const [pendingNotReady, setPendingNotReady] = useState(false);
 
   const methods = useForm({
     defaultValues: formState.defaults,
@@ -251,6 +253,9 @@ function SettingsFormContent({formState}: {formState: FormState}) {
     return false;
   }, [errors, confirmedFields]);
 
+  // TEMP: kept for when the save flow is re-enabled. Currently
+  // unreachable because the Save button routes to NotReadyDialog.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function performSave() {
     if (!rpc) return;
     const confirmedValues = getConfirmedValues();
@@ -270,22 +275,28 @@ function SettingsFormContent({formState}: {formState: FormState}) {
 
     setSaving(true);
     try {
-      let yamlReportedSkipped: Array<{key: string; reason: string}> = [];
-      if (Object.keys(mergedYamlChanges).length > 0) {
-        const result = (await rpc.meta.config.set({changes: mergedYamlChanges as never})) as {
-          skipped_keys?: Array<{key: string; reason: string} | string>;
-        };
-        // Tolerate the old string[] shape from pre-v1.2.7 backends so the
-        // UI doesn't blow up when running against an older mower image.
-        yamlReportedSkipped = (result?.skipped_keys ?? []).map((s) =>
-          typeof s === 'string' ? {key: s, reason: 'unknown'} : s,
-        );
-      }
+      // TEMP: save disabled until properly tested — see NotReadyDialog.
+      // The button-side code no longer reaches performSave(), and these
+      // RPC calls are commented out so even if it did, nothing leaves
+      // the browser. Restore both blocks (and remove the stubs below)
+      // once the save flow is verified end-to-end.
+      const yamlReportedSkipped: Array<{key: string; reason: string}> = [];
+      // if (Object.keys(mergedYamlChanges).length > 0) {
+      //   const result = (await rpc.meta.config.set({changes: mergedYamlChanges as never})) as {
+      //     skipped_keys?: Array<{key: string; reason: string} | string>;
+      //   };
+      //   // Tolerate the old string[] shape from pre-v1.2.7 backends so the
+      //   // UI doesn't blow up when running against an older mower image.
+      //   yamlReportedSkipped = (result?.skipped_keys ?? []).map((s) =>
+      //     typeof s === 'string' ? {key: s, reason: 'unknown'} : s,
+      //   );
+      // }
 
-      const rosResults = await Promise.allSettled(
-        Object.entries(rosChanges).map(([name, value]) => rpc.params.set({name, value: value as never})),
-      );
-      const rosFailures = rosResults.filter((r) => r.status === 'rejected').length;
+      // const rosResults = await Promise.allSettled(
+      //   Object.entries(rosChanges).map(([name, value]) => rpc.params.set({name, value: value as never})),
+      // );
+      // const rosFailures = rosResults.filter((r) => r.status === 'rejected').length;
+      const rosFailures = 0;
 
       const totalSkipped = skipped.length + yamlReportedSkipped.length;
       if (rosFailures > 0) {
@@ -353,10 +364,11 @@ function SettingsFormContent({formState}: {formState: FormState}) {
                 disabled={!hasChanges || hasConfirmedErrors || saving || !rpc}
                 onClick={() => {
                   if (!rpc) return;
-                  // Pre-flight: gate hardware-geometry edits behind a
-                  // confirm dialog. The actual save runs in performSave()
-                  // either directly (no HW fields touched) or via the
-                  // dialog's Confirm callback.
+                  // TEMP: Save flow is gated by NotReadyDialog until it's
+                  // properly tested end-to-end. We still surface the HW
+                  // confirm step for non-HW vs HW paths so the UX matches
+                  // the eventual real flow, but both branches end at the
+                  // friendly "nothing actually happened" dialog.
                   const hwFields: Array<{label: string; path: string}> = [];
                   for (const path of confirmedFieldsRef.current) {
                     const leaf = formState.leafIndex.get(path);
@@ -367,7 +379,7 @@ function SettingsFormContent({formState}: {formState: FormState}) {
                   if (hwFields.length > 0) {
                     setPendingHwConfirm({affectedFields: hwFields});
                   } else {
-                    void performSave();
+                    setPendingNotReady(true);
                   }
                 }}
               >
@@ -394,7 +406,15 @@ function SettingsFormContent({formState}: {formState: FormState}) {
           onCancel={() => setPendingHwConfirm(null)}
           onConfirm={() => {
             setPendingHwConfirm(null);
-            void performSave();
+            setPendingNotReady(true);
+          }}
+        />
+        <NotReadyDialog
+          open={pendingNotReady}
+          onClose={() => {
+            setPendingNotReady(false);
+            confirmedFieldsRef.current.clear();
+            setConfirmedFields(new Set());
           }}
         />
       </FormProvider>
