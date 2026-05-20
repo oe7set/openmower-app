@@ -1,4 +1,5 @@
 import type {MowerConfig} from '@/components/types';
+import {useMowerColor} from '@/lib/mowerColors';
 import {useMowersStore} from '@/stores/mowersStore';
 import {KeyboardArrowDown, SmartToy as MowerIcon} from '@mui/icons-material';
 import {Avatar, Box, Typography, useTheme} from '@mui/material';
@@ -12,6 +13,7 @@ interface SelectedMowerProps {
 export default function SelectedMower({selectedMower, showSwitcher, onMowerMenuOpen}: SelectedMowerProps) {
   const theme = useTheme();
   const status = useMowersStore((s) => s.mqttStatuses[selectedMower.id]);
+  const mowerColor = useMowerColor(selectedMower.id) ?? theme.palette.primary.main;
 
   const statusLabel =
     status === 'connected'
@@ -47,10 +49,12 @@ export default function SelectedMower({selectedMower, showSwitcher, onMowerMenuO
           gap: 2,
           cursor: showSwitcher ? 'pointer' : 'default',
           '&:hover': {opacity: showSwitcher ? 0.8 : 1},
+          borderLeft: `3px solid ${mowerColor}`,
+          pl: 1.5,
         }}
         onClick={showSwitcher ? onMowerMenuOpen : undefined}
       >
-        <Avatar sx={{bgcolor: theme.palette.primary.main, width: 40, height: 40}}>
+        <Avatar sx={{bgcolor: mowerColor, width: 40, height: 40}}>
           <MowerIcon fontSize="small" />
         </Avatar>
         <Box sx={{flex: 1, minWidth: 0}}>

@@ -1,17 +1,70 @@
 'use client';
 
+import {useTopBarTitleStore} from '@/stores/topBarTitleStore';
+import {useUiStore, type PageHeaderStyle} from '@/stores/uiStore';
 import {Box, Typography, useTheme, type SxProps} from '@mui/material';
-import {PropsWithChildren} from 'react';
+import {PropsWithChildren, useEffect} from 'react';
 
 interface PageHeaderProps {
   title: string;
   subtitle: string;
+  /** Override the user's global preference for this page. Rarely needed. */
+  variant?: PageHeaderStyle;
   sx?: SxProps;
 }
 
-export default function PageHeader({title, subtitle, children, sx}: PropsWithChildren<PageHeaderProps>) {
+export default function PageHeader({title, subtitle, children, sx, variant}: PropsWithChildren<PageHeaderProps>) {
   const theme = useTheme();
+  const userVariant = useUiStore((s) => s.pageHeaderStyle);
+  const setTopBarTitle = useTopBarTitleStore((s) => s.set);
+  const clearTopBarTitle = useTopBarTitleStore((s) => s.clear);
+  const effective = variant ?? userVariant;
 
+  // Minimal mode publishes the title to TopBar and renders nothing. Done in
+  // an effect so route transitions reliably swap the published title even
+  // when the same PageHeader instance is reused with new props.
+  useEffect(() => {
+    if (effective !== 'minimal') return;
+    setTopBarTitle(title, subtitle);
+    return () => clearTopBarTitle();
+  }, [effective, title, subtitle, setTopBarTitle, clearTopBarTitle]);
+
+  if (effective === 'minimal') {
+    return null;
+  }
+
+  if (effective === 'flat') {
+    return (
+      <Box
+        sx={{
+          backgroundColor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
+          pt: {xs: 1, md: 2},
+          pb: {xs: 0, md: 3},
+          px: {xs: 0, md: 3},
+          mt: {xs: -1, md: 0},
+          position: 'relative',
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          ...sx,
+        }}
+      >
+        <Box sx={{px: 3}}>
+          <Typography variant="h3" component="h1" gutterBottom>
+            {title}
+          </Typography>
+          <Typography
+            variant="body1"
+            sx={{color: theme.palette.text.secondary, mb: 2, display: {xs: 'none', md: 'block'}}}
+          >
+            {subtitle}
+          </Typography>
+          <Box sx={{display: {xs: 'none', md: 'flex'}, flexWrap: 'wrap', gap: 3, mt: 2}}>{children}</Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // hero (default)
   return (
     <Box
       sx={{

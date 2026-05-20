@@ -1,7 +1,27 @@
+:root {
+  --ui-scale: 1;
+}
+
+html {
+  font-size: calc(16px * var(--ui-scale));
+}
+
 html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
+}
+
+/* Motion = "off" zeroes both CSS animations (kill-button blink keyframe,
+   notistack slide) and CSS transitions across the tree. MUI's JS-driven
+   Slide/Fade are zeroed via theme.transitions.duration in src/theme.ts. */
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
 }
 
 body {

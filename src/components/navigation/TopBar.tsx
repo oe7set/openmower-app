@@ -1,8 +1,10 @@
 'use client';
 
 import {useToast} from '@/hooks/useToast';
+import {useMowerColor} from '@/lib/mowerColors';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useConnectionDiagnostic, useMowersStore, useSelectedMower} from '@/stores/mowersStore';
+import {useTopBarTitleStore} from '@/stores/topBarTitleStore';
 import {useUiStore, type ThemeMode} from '@/stores/uiStore';
 import {useUnreadForActive} from '@/stores/notificationsStore';
 import {
@@ -29,6 +31,8 @@ import {
   MenuItem,
   Slide,
   Tooltip,
+  Typography,
+  alpha,
   keyframes,
   useTheme,
 } from '@mui/material';
@@ -53,9 +57,13 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
   const themeMode = useUiStore((s) => s.themeMode);
   const setThemeMode = useUiStore((s) => s.setThemeMode);
   const topBarMode = useUiStore((s) => s.topBarMode);
+  const pageHeaderStyle = useUiStore((s) => s.pageHeaderStyle);
   const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
+  const selectedMowerId = useMowersStore((s) => s.mowers[s.selected]?.id);
+  const mowerColor = useMowerColor(selectedMowerId);
   const diag = useConnectionDiagnostic();
   const unreadEvents = useUnreadForActive();
+  const minimalTitle = useTopBarTitleStore((s) => s.title);
 
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
@@ -199,7 +207,20 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
         <MenuIcon />
       </IconButton>
 
-      <Box sx={{flex: 1}} />
+      {pageHeaderStyle === 'minimal' && minimalTitle ? (
+        <Box sx={{flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center'}}>
+          <Typography
+            variant="subtitle1"
+            component="div"
+            noWrap
+            sx={{fontWeight: 600, color: 'text.primary'}}
+          >
+            {minimalTitle}
+          </Typography>
+        </Box>
+      ) : (
+        <Box sx={{flex: 1}} />
+      )}
 
       <Tooltip title={pillTooltip}>
         <IconButton
@@ -216,7 +237,9 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
               height: 10,
               borderRadius: '50%',
               bgcolor: pillColor,
-              boxShadow: `0 0 0 2px ${pillColor}33`,
+              // Ring colour identifies the active mower; the dot itself
+              // continues to encode connection status.
+              boxShadow: `0 0 0 2px ${alpha(mowerColor ?? pillColor, 0.4)}`,
             }}
           />
         </IconButton>

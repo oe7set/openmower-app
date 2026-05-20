@@ -45,13 +45,14 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        {/* Runs before React hydrates — sets body background immediately so the
-            blank-before-mount period matches the final theme colour. Reads the
-            persisted uiStore ('openmower-ui') first; falls back to prefers-color-scheme.
+        {/* Runs before React hydrates — sets body background, font scale, and
+            motion mode immediately so the blank-before-mount period matches
+            the final settings. Reads the persisted uiStore ('openmower-ui')
+            first; falls back to OS-level media queries.
             Background hex values must stay in sync with PRE_HYDRATION_BG in src/theme.ts. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var stored=localStorage.getItem('openmower-ui');var mode='system';if(stored){var s=JSON.parse(stored);if(s&&s.state&&s.state.themeMode)mode=s.state.themeMode;}var d=mode==='dark'||(mode==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.body.style.background=d?'#0E0F10':'#FFFFFF';}catch(e){}})()`,
+            __html: `(function(){try{var stored=localStorage.getItem('openmower-ui');var st={};if(stored){var p=JSON.parse(stored);if(p&&p.state)st=p.state;}var mode=st.themeMode||'system';var d=mode==='dark'||(mode==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.body.style.background=d?'#0E0F10':'#FFFFFF';var scale=typeof st.fontScale==='number'?st.fontScale:1;document.documentElement.style.setProperty('--ui-scale',String(scale));var motion=st.motionMode||'system';var mr=motion==='off'||(motion==='system'&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)?'off':'full';document.documentElement.setAttribute('data-motion',mr);}catch(e){}})()`,
           }}
         />
         <ConfigInitializer config={config} />

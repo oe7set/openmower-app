@@ -1,4 +1,5 @@
 import {type MowerConfig} from '@/components/types';
+import {useMowerColor} from '@/lib/mowerColors';
 import {useMowersStore} from '@/stores/mowersStore';
 import {Check as CheckIcon} from '@mui/icons-material';
 import {Box, MenuItem, Typography, useTheme} from '@mui/material';
@@ -12,6 +13,7 @@ interface MowerSelectorItemProps {
 export default function MowerSelectorItem({mower, selected, onClick}: MowerSelectorItemProps) {
   const theme = useTheme();
   const status = useMowersStore((s) => s.mqttStatuses[mower.id]);
+  const mowerColor = useMowerColor(mower.id) ?? theme.palette.primary.main;
 
   const statusColor =
     status === 'connected'
@@ -29,6 +31,7 @@ export default function MowerSelectorItem({mower, selected, onClick}: MowerSelec
         alignItems: 'center',
         gap: 2,
         p: 2,
+        borderLeft: `3px solid ${mowerColor}`,
       }}
     >
       <Box
