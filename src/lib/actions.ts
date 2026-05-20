@@ -14,12 +14,12 @@ async function loadConfigFromEnv(): Promise<AppConfig | null> {
   const mqtt_ws_url = process.env.MOWER_MQTT_WS_URL ?? `ws://${hostname}:9001`;
   const mqtt_prefix = process.env.MOWER_MQTT_PREFIX ?? '';
   const camera_url = process.env.MOWER_CAMERA_URL ?? '';
-  // Default points at the lowlatency-cam-streamer sidecar's standard
-  // STREAM_NAME=cam, WHEP_PORT=8889. Same host-derivation pattern as
-  // mqtt_ws_url so the deploy "just works" when the streamer runs colocated
-  // with the app. Set MOWER_WHEP_URL to an empty string to disable WHEP and
-  // force the MJPEG fallback.
-  const whep_url = process.env.MOWER_WHEP_URL ?? `http://${hostname}:8889/cam/whep`;
+  // Opt-in: leave both unset and the Drive page hides the camera card
+  // entirely (CameraCard returns null when both URLs are empty). Set
+  // MOWER_WHEP_URL explicitly to enable WHEP, or MOWER_CAMERA_URL for
+  // the MJPEG fallback. The lowlatency-cam-streamer sidecar's standard
+  // endpoint is http://<host>:8889/cam/whep if you want a starting point.
+  const whep_url = process.env.MOWER_WHEP_URL ?? '';
 
   if (!name || !mqtt_ws_url) return null;
 
