@@ -168,11 +168,18 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
     );
   }
 
+  // Auto-hide overlays content so the slide-out actually reveals the page
+  // underneath — sticky would leave the bar's slot in flow, producing the
+  // "empty strip at the top" we got on the first cut. Always-visible mode
+  // keeps the original sticky behaviour so content sits below the bar.
+  const isOverlay = topBarMode === 'autoHide';
   const bar = (
     <Box
       sx={{
-        position: 'sticky',
+        position: isOverlay ? 'fixed' : 'sticky',
         top: 0,
+        left: 0,
+        right: 0,
         zIndex: theme.zIndex.appBar,
         display: 'flex',
         alignItems: 'center',
