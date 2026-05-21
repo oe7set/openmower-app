@@ -1,6 +1,6 @@
 'use client';
 
-import {fmtDeg, fmtMeters} from '@/lib/format';
+import {fmtAccuracy, fmtDeg} from '@/lib/format';
 import {fixTypeShort} from '@/lib/gps';
 import {qualityColor, resolveWifiQuality} from '@/lib/wifi';
 import {useSelectedMower} from '@/stores/mowersStore';
@@ -238,7 +238,7 @@ export default function TelemetryStrip() {
       <MetricPill
         icon={<PinDropIcon />}
         label="Accuracy"
-        value={fmtMeters(state?.pose?.pos_accuracy)}
+        value={fmtAccuracy(state?.pose?.pos_accuracy)}
       />
 
       <MetricPill

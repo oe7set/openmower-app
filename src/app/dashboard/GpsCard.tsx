@@ -1,6 +1,7 @@
 'use client';
 
 import {outerCardStyles} from '@/lib/cardStyles';
+import {fmtAccuracy} from '@/lib/format';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {GpsFixed, GpsOff, GpsNotFixed} from '@mui/icons-material';
 import {Box, Card, CardContent, Chip, LinearProgress, Typography, useTheme} from '@mui/material';
@@ -30,7 +31,7 @@ function fixTypeLabel(t: number | undefined): {label: string; color: 'success' |
 export default function GpsCard() {
   const theme = useTheme();
   const gps = useSelectedMower((s) => s?.state.gps_percentage ?? 0);
-  const posAccuracy = useSelectedMower((s) => s?.state.pose.pos_accuracy ?? 0);
+  const posAccuracy = useSelectedMower((s) => s?.state.pose.pos_accuracy);
   const headingAccuracy = useSelectedMower((s) => s?.state.pose.heading_accuracy ?? 0);
   const headingValid = useSelectedMower((s) => s?.state.pose.heading_valid ?? false);
   const fixType = useSelectedMower((s) => s?.state.gps_fix_type);
@@ -38,9 +39,6 @@ export default function GpsCard() {
   const pdopRaw = useSelectedMower((s) => s?.state.gps_pdop);
   // PDOP of exactly 0 is the backend's "not reported" sentinel.
   const pdop = pdopRaw && pdopRaw > 0 ? pdopRaw : undefined;
-  // xbot_positioning emits 999 m as a sentinel when no recent RTK fix is
-  // available; nothing real ever exceeds a few meters.
-  const posAccuracyShown = posAccuracy > 0 && posAccuracy < 100;
 
   const color = gpsColor(gps);
   const Icon = gps >= 75 ? GpsFixed : gps >= 25 ? GpsNotFixed : GpsOff;
@@ -81,7 +79,7 @@ export default function GpsCard() {
               Position accuracy
             </Typography>
             <Typography variant="body2" fontWeight="600">
-              {posAccuracyShown ? `${posAccuracy.toFixed(2)} m` : '—'}
+              {fmtAccuracy(posAccuracy)}
             </Typography>
           </Box>
           <Box sx={{textAlign: 'right'}}>

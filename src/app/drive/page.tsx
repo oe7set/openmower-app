@@ -4,7 +4,7 @@ import VirtualJoystick from '@/components/map/teleop/VirtualJoystick';
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {useToast} from '@/hooks/useToast';
 import {useTeleop} from '@/hooks/useTeleop';
-import {fmtDeg, fmtMeters, fmtXY} from '@/lib/format';
+import {fmtAccuracy, fmtDeg, fmtXY} from '@/lib/format';
 import {MOWER_ACTIONS, type MowerActionId} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore} from '@/stores/uiStore';
@@ -107,7 +107,7 @@ export default function DrivePage() {
               <PoseRow icon={<HeadingIcon fontSize="small" />} label="Heading" value={fmtDeg(state?.pose?.heading)} />
               <PoseRow icon={<GpsIcon fontSize="small" />} label="Position" value={fmtXY(state?.pose?.x, state?.pose?.y)} />
               <PoseRow label="GPS quality" value={`${state?.gps_percentage ?? 0}%`} />
-              <PoseRow label="Pos. accuracy" value={fmtMeters(state?.pose?.pos_accuracy)} />
+              <PoseRow label="Pos. accuracy" value={fmtAccuracy(state?.pose?.pos_accuracy)} />
               <PoseRow label="Battery" value={`${state?.battery_percentage ?? 0}%`} />
             </CardContent>
           </Card>
