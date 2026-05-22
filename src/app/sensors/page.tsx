@@ -22,7 +22,12 @@ const SENSOR_PRIORITY = [
   'om_mow_esc_temp',
   'om_left_esc_temp',
   'om_right_esc_temp',
+  'om_gps_quality',
   'om_gps_accuracy',
+  'om_gps_satellites',
+  'om_gps_pdop',
+  'om_gps_fix_type',
+  'om_gps_heading_accuracy',
 ];
 
 function sortInfos(a: SensorInfo, b: SensorInfo): number {
@@ -46,7 +51,7 @@ export default function SensorsPage() {
     <Page>
       <PageHeader title="Sensors" subtitle="Live readings from the mower's onboard hardware">
         <HeaderStat icon={<SensorsIcon />} value={sensorInfos.length} label="Discovered" />
-        <HeaderStat icon={<TimelineIcon />} value="60s" label="History buffer" />
+        <HeaderStat icon={<TimelineIcon />} value="1 h" label="History buffer" />
         {fixType !== undefined && (
           <HeaderStat icon={<GpsFixIcon />} value={fixTypeShort(fixType)} label="GPS fix" />
         )}

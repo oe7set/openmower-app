@@ -578,6 +578,80 @@
           "properties": {"ok": {"type": "boolean"}}
         }
       }
+    },
+    {
+      "name": "sensors.history",
+      "summary": "Replay the in-memory sample ring buffer for one sensor (~1 h @ 2 Hz).",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sensor_id",
+          "description": "Sensor id matching SensorInfo.sensor_id.",
+          "required": true,
+          "schema": {"type": "string"}
+        },
+        {
+          "name": "since_ts",
+          "description": "Return only samples with ts_ms strictly greater than this value (epoch ms).",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        },
+        {
+          "name": "limit",
+          "description": "Maximum samples to return (1–7200, default 7200). Trailing window — most-recent samples are kept.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 1, "maximum": 7200}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Samples in chronological order (oldest first).",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sensor_id": {"type": "string"},
+            "samples": {
+              "type": "array",
+              "items": {"$ref": "#/components/schemas/SensorSample"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "sensors.history_bulk",
+      "summary": "Replay history for every sensor with a non-empty ring buffer in one round-trip.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "since_ts",
+          "description": "Return only samples with ts_ms strictly greater than this value (epoch ms).",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        },
+        {
+          "name": "limit",
+          "description": "Maximum samples per sensor (1–7200, default 7200).",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 1, "maximum": 7200}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Samples per sensor id, oldest first.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sensors": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {"$ref": "#/components/schemas/SensorSample"}
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "components": {
@@ -598,6 +672,14 @@
             "additionalProperties": true
           },
           "acked": {"type": "boolean", "description": "Whether the user has acknowledged this event."}
+        }
+      },
+      "SensorSample": {
+        "type": "object",
+        "required": ["ts_ms", "value"],
+        "properties": {
+          "ts_ms": {"type": "integer", "description": "Wall-clock epoch milliseconds the sample was recorded at."},
+          "value": {"type": "number"}
         }
       },
       "Schedule": {

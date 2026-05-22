@@ -44,9 +44,15 @@ import {
 } from './schemas';
 import {useDatumCacheStore} from './datumCacheStore';
 import {useNotificationsStore} from './notificationsStore';
-import {pushSensorValue} from './sensorsStore';
+import {pushSensorValue, seedAllSensorHistory} from './sensorsStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
+
+// Per-mower flag: did we already pull the backend's trailing-hour ring
+// buffer? sensor_infos/json is retained, so we get a copy on every
+// reconnect/subscribe — without this guard the bulk RPC would fire on every
+// subscribe storm.
+const sensorHistorySeeded = new Set<string>();
 
 // Topics the dashboard depends on for "is the mower alive?". Tracked
 // separately from arbitrary topic subscriptions so the connection banner
@@ -346,6 +352,28 @@ export const useMowersStore = create<MowersStore>()(
                 set((state) => {
                   state.mowers[idx].sensorInfos = parsed;
                 });
+                // Warm up the chart history from the backend ring buffer so a
+                // freshly opened SensorHistoryDialog shows the trailing hour
+                // immediately instead of "Waiting for data…". Best-effort: an
+                // older xbot_monitoring without the RPC throws, in which case
+                // we fall back to live-only just like before.
+                const mowerForReplay = mowers[idx];
+                if (mowerForReplay && !sensorHistorySeeded.has(mowerForReplay.id)) {
+                  sensorHistorySeeded.add(mowerForReplay.id);
+                  mowerForReplay.rpc.sensors
+                    .history_bulk({})
+                    .then((res) => {
+                      const sensors = (res as {sensors?: Record<string, Array<{ts_ms: number; value: number}>>})
+                        .sensors;
+                      if (sensors) seedAllSensorHistory(mowerForReplay.id, sensors);
+                    })
+                    .catch(() => {
+                      // Older backend without sensors.history_bulk — keep the
+                      // flag set so we don't retry on every sensor_infos
+                      // republish; the live stream still fills the buffer
+                      // going forward.
+                    });
+                }
               } catch (e) {
                 console.warn('[mowersStore] sensor_infos/json parse failed:', e);
               }
