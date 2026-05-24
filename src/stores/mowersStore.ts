@@ -354,24 +354,29 @@ export const useMowersStore = create<MowersStore>()(
                 });
                 // Warm up the chart history from the backend ring buffer so a
                 // freshly opened SensorHistoryDialog shows the trailing hour
-                // immediately instead of "Waiting for data…". Best-effort: an
-                // older xbot_monitoring without the RPC throws, in which case
-                // we fall back to live-only just like before.
+                // immediately instead of "Waiting for data…".
+                //
+                // The seeded flag is set INSIDE the in-flight guard but only
+                // promoted to "permanent" after a successful response. On
+                // failure (RPC timeout, older xbot_monitoring without the
+                // method) we clear the flag so the next `sensor_infos/json`
+                // republish triggers a fresh attempt — important because
+                // history_bulk on a fully-loaded mower can take >5 s and
+                // sometimes hits the 10 s rpc-base timeout. The Dialog has
+                // its own per-sensor fallback for the worst case.
                 const mowerForReplay = mowers[idx];
                 if (mowerForReplay && !sensorHistorySeeded.has(mowerForReplay.id)) {
-                  sensorHistorySeeded.add(mowerForReplay.id);
+                  const replayId = mowerForReplay.id;
+                  sensorHistorySeeded.add(replayId);
                   mowerForReplay.rpc.sensors
                     .history_bulk({})
                     .then((res) => {
                       const sensors = (res as {sensors?: Record<string, Array<{ts_ms: number; value: number}>>})
                         .sensors;
-                      if (sensors) seedAllSensorHistory(mowerForReplay.id, sensors);
+                      if (sensors) seedAllSensorHistory(replayId, sensors);
                     })
                     .catch(() => {
-                      // Older backend without sensors.history_bulk — keep the
-                      // flag set so we don't retry on every sensor_infos
-                      // republish; the live stream still fills the buffer
-                      // going forward.
+                      sensorHistorySeeded.delete(replayId);
                     });
                 }
               } catch (e) {

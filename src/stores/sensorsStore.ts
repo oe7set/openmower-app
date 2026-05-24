@@ -53,10 +53,21 @@ export function pushSensorValue(mowerId: string, sensorId: string, raw: string):
   });
 }
 
+// Safety gap (ms) we leave in front of the first live sample. Backend
+// replay samples whose timestamp falls inside this window are dropped.
+// Browser clock and mower clock can drift by a second or two, and the
+// merge below is strictly *backfill-only* — backend samples may only fill
+// in time before our live data starts, never overlap it. Without this
+// gap a slightly-skewed backend timestamp lands between two live points
+// and the chart line draws a visible kink backwards in time.
+const BACKFILL_SAFETY_MS = 100;
+
 // Merge backend-replayed samples into the ring buffer for a single sensor.
-// Samples come oldest→newest with strictly numeric values. The merge is
-// idempotent: if the live MQTT stream has already pushed identical
-// timestamps we drop the duplicates so the chart does not double-plot.
+// Strictly backfill-only: the live MQTT stream is authoritative for any
+// timeframe it has already covered, so we drop any backend sample whose
+// timestamp is at or after the first live sample (minus a small safety
+// gap to absorb clock drift). On a cold buffer (no live data yet) all
+// backend samples are accepted.
 export function seedSensorHistory(
   mowerId: string,
   sensorId: string,
@@ -68,32 +79,39 @@ export function seedSensorHistory(
     const mowerHistory = {...(state.history[mowerId] ?? {})};
     const existing = mowerHistory[sensorId] ?? [];
 
-    // Build a {ts -> sample} map so duplicates get overwritten by the live
-    // value (which is what is on screen anyway). Then resort and trim.
+    // Cutoff: anything strictly older than this is safe to backfill.
+    // When `existing` is empty there is no live data yet → take everything.
+    const backfillCutoff = existing.length > 0 ? existing[0].ts - BACKFILL_SAFETY_MS : Infinity;
+
     const byTs = new Map<number, SensorSample>();
     for (const s of existing) {
       byTs.set(s.ts, s);
     }
+    let accepted = 0;
     for (const s of samples) {
-      // Live samples win on ts conflict — they were the source of truth and
-      // came with whatever raw shape the MQTT producer sent (numeric or
-      // string). Backend-replayed samples are always numeric.
-      if (!byTs.has(s.ts_ms)) {
-        byTs.set(s.ts_ms, {value: s.value, ts: s.ts_ms});
-      }
+      if (s.ts_ms >= backfillCutoff) continue;
+      if (byTs.has(s.ts_ms)) continue;
+      byTs.set(s.ts_ms, {value: s.value, ts: s.ts_ms});
+      accepted++;
+    }
+    if (accepted === 0) {
+      // Nothing to merge — return current state untouched to avoid a
+      // pointless re-render of every subscriber.
+      return state;
     }
     const merged = Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);
     mowerHistory[sensorId] =
       merged.length > RING_CAPACITY ? merged.slice(merged.length - RING_CAPACITY) : merged;
 
-    // Latest value: keep whatever the live stream has most recently
-    // delivered if it is newer than the seeded data; otherwise use the
-    // newest seeded sample.
+    // Latest value: only seed a "current" sample on cold-start (no live
+    // data yet). If the live stream is already running, its values are
+    // authoritative for the head of the buffer.
     const mowerValues = {...(state.values[mowerId] ?? {})};
-    const seedNewest = samples[samples.length - 1];
-    const liveLatest = mowerValues[sensorId];
-    if (!liveLatest || liveLatest.ts < seedNewest.ts_ms) {
-      mowerValues[sensorId] = {value: seedNewest.value, ts: seedNewest.ts_ms};
+    if (!mowerValues[sensorId]) {
+      const seedNewest = samples[samples.length - 1];
+      if (seedNewest.ts_ms < backfillCutoff) {
+        mowerValues[sensorId] = {value: seedNewest.value, ts: seedNewest.ts_ms};
+      }
     }
 
     return {
