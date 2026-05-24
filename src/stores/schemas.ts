@@ -229,7 +229,18 @@ export type LegacyMapData = z.infer<typeof legacyMapSchema>;
 // Backend version info — published retained on <prefix>version/json by xbot_monitoring.
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const versionSchema = z.object({version: z.string()});
+// `firmware` is populated once the mainboard has reported its build identifiers
+// to mower_comms_v2 (HighLevelService). It is missing for legacy/V1 setups and
+// while the STM32 has not yet been claimed.
+export const firmwareVersionSchema = z.object({
+  git_hash: z.string(),
+  build_date: z.string(),
+});
+export const versionSchema = z.object({
+  version: z.string(),
+  firmware: firmwareVersionSchema.optional(),
+});
+export type FirmwareVersionInfo = z.infer<typeof firmwareVersionSchema>;
 export type VersionInfo = z.infer<typeof versionSchema>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

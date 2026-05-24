@@ -148,7 +148,23 @@ function MqttSection({mqttUrl, mqttPrefix, mqttStatus}: {mqttUrl: string; mqttPr
 // (set automatically from package.json by Next; falls back to 'dev' locally).
 const FRONTEND_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.1.0';
 
+function MissingValue({tooltip, label}: {tooltip: string; label: string}) {
+  return (
+    <Tooltip title={tooltip} arrow>
+      <Typography
+        component="span"
+        color="text.disabled"
+        fontSize="inherit"
+        sx={{textDecoration: 'underline dotted', cursor: 'help'}}
+      >
+        {label}
+      </Typography>
+    </Tooltip>
+  );
+}
+
 function VersionSection({backend}: {backend: VersionInfo | null}) {
+  const firmware = backend?.firmware;
   return (
     <Box>
       <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
@@ -173,19 +189,10 @@ function VersionSection({backend}: {backend: VersionInfo | null}) {
           {backend ? (
             backend.version
           ) : (
-            <Tooltip
-              title="The mower's xbot_monitoring should publish version/json with retain=true. If you only see this after a backend restart, the publish is likely not retained."
-              arrow
-            >
-              <Typography
-                component="span"
-                color="text.disabled"
-                fontSize="inherit"
-                sx={{textDecoration: 'underline dotted', cursor: 'help'}}
-              >
-                not received yet
-              </Typography>
-            </Tooltip>
+            <MissingValue
+              tooltip="The mower's xbot_monitoring should publish version/json with retain=true. If you only see this after a backend restart, the publish is likely not retained."
+              label="not received yet"
+            />
           )}
         </Typography>
         <Typography variant="body2" color="text.secondary" fontWeight={500}>
@@ -193,6 +200,32 @@ function VersionSection({backend}: {backend: VersionInfo | null}) {
         </Typography>
         <Typography variant="body2" sx={{fontFamily: 'var(--font-dm-mono), monospace', fontSize: '0.8rem'}}>
           {FRONTEND_VERSION}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" fontWeight={500}>
+          Firmware Git
+        </Typography>
+        <Typography variant="body2" sx={{fontFamily: 'var(--font-dm-mono), monospace', fontSize: '0.8rem'}}>
+          {firmware ? (
+            firmware.git_hash
+          ) : (
+            <MissingValue
+              tooltip="The mainboard firmware (HighLevelService) reports its build identifiers once it is claimed by mower_comms_v2. Empty here means: V1 hardware, mainboard offline, or firmware older than the version that started reporting this."
+              label="not available"
+            />
+          )}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" fontWeight={500}>
+          Firmware Built
+        </Typography>
+        <Typography variant="body2" sx={{fontFamily: 'var(--font-dm-mono), monospace', fontSize: '0.8rem'}}>
+          {firmware ? (
+            firmware.build_date
+          ) : (
+            <MissingValue
+              tooltip="The mainboard firmware (HighLevelService) reports its build identifiers once it is claimed by mower_comms_v2. Empty here means: V1 hardware, mainboard offline, or firmware older than the version that started reporting this."
+              label="not available"
+            />
+          )}
         </Typography>
       </Box>
     </Box>
