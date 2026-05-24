@@ -50,21 +50,14 @@ export default function DrivePage() {
   const setCap = useUiStore((s) => s.setTeleopSpeedCap);
   const {setVelocity} = useTeleop({cap});
   const state = useSelectedMower((s) => s?.state);
-  const [killOpen, setKillOpen] = useState(false);
-  const [killing, setKilling] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
 
-  const triggerEmergency = async () => {
+  const triggerEmergency = () => {
     const {mowers, selected} = useMowersStore.getState();
     const mower = mowers[selected];
     if (!mower) return;
-    setKilling(true);
-    try {
-      mower.publishAction('mower_logic/set_emergency');
-      toast.warning('Emergency stop sent');
-      setKillOpen(false);
-    } finally {
-      setKilling(false);
-    }
+    mower.publishAction(MOWER_ACTIONS.setEmergency);
+    toast.warning('Emergency stop sent');
   };
 
   const sendAction = (label: string, actionId: MowerActionId) => {
@@ -141,7 +134,7 @@ export default function DrivePage() {
                 color="error"
                 startIcon={<StopIcon />}
                 sx={{mt: 3}}
-                onClick={() => setKillOpen(true)}
+                onClick={triggerEmergency}
                 disabled={!state}
               >
                 Emergency stop
@@ -166,7 +159,7 @@ export default function DrivePage() {
                   label="Reset emergency"
                   icon={<WarningIcon />}
                   color="error"
-                  onClick={() => sendAction('Reset emergency', MOWER_ACTIONS.resetEmergency)}
+                  onClick={() => setResetOpen(true)}
                 />
               )}
               {stateLabel === 'IDLE' && (
@@ -266,17 +259,25 @@ export default function DrivePage() {
         </Typography>
       </PageContent>
 
-      <Dialog open={killOpen} onClose={() => setKillOpen(false)}>
-        <DialogTitle>Trigger emergency stop?</DialogTitle>
+      <Dialog open={resetOpen} onClose={() => setResetOpen(false)}>
+        <DialogTitle>Reset emergency stop?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            The mower will halt immediately and require a manual reset from the Dashboard before resuming.
+            The mower will be allowed to resume operation. Make sure the area is safe and the cause of the emergency
+            has been cleared.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setKillOpen(false)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={triggerEmergency} disabled={killing}>
-            Emergency stop
+          <Button onClick={() => setResetOpen(false)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              setResetOpen(false);
+              sendAction('Reset emergency', MOWER_ACTIONS.resetEmergency);
+            }}
+          >
+            Reset
           </Button>
         </DialogActions>
       </Dialog>

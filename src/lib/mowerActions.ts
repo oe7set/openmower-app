@@ -4,10 +4,12 @@
 // behavior `handle_action` switches on the same composite string, so flat
 // IDs like `mower_logic/start_recording` are silently ignored.
 //
-// `resetEmergency` is the documented exception — mower_logic.cpp catches it
-// before dispatching to the current behavior, so it stays prefix-less.
+// `resetEmergency` and `setEmergency` are the documented exceptions —
+// mower_logic.cpp catches them in actionReceived before dispatching to the
+// current behavior, so they stay prefix-less.
 export const MOWER_ACTIONS = {
   resetEmergency: 'mower_logic/reset_emergency',
+  setEmergency: 'mower_logic/set_emergency',
 
   startMowing: 'mower_logic:idle/start_mowing',
   startAreaRecording: 'mower_logic:idle/start_area_recording',

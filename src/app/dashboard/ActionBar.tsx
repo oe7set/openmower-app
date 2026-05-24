@@ -12,13 +12,21 @@ import {
   Stop as StopIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import {Box, Button, Card, CardContent, Typography, useTheme} from '@mui/material';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Typography,
+  useTheme,
+} from '@mui/material';
 import {ReactNode, useState} from 'react';
 
-// `setEmergency` ('mower_logic/set_emergency') is intentionally kept here
-// even though the backend does not implement it as an action handler — the
-// button currently has no effect. Removing it would be a UX regression
-// without a functional alternative; fixing it requires backend work.
 const ACTIONS = {
   start: MOWER_ACTIONS.startMowing,
   pause: MOWER_ACTIONS.pause,
@@ -26,7 +34,7 @@ const ACTIONS = {
   skip: MOWER_ACTIONS.skipArea,
   abort: MOWER_ACTIONS.abortMowing,
   resetEmergency: MOWER_ACTIONS.resetEmergency,
-  setEmergency: 'mower_logic/set_emergency',
+  setEmergency: MOWER_ACTIONS.setEmergency,
 } as const;
 
 type ButtonSpec = {
@@ -43,6 +51,7 @@ export default function ActionBar() {
   const selected = useSelectedMower((s) => s);
   const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
   const [pending, setPending] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
 
   const send = async (label: string, actionId: string) => {
     const mower = useMowersStore.getState().mowers[useMowersStore.getState().selected];
@@ -93,7 +102,7 @@ export default function ActionBar() {
               color={color}
               startIcon={icon}
               disabled={pending !== null || !isEnabled(id)}
-              onClick={() => send(label, id)}
+              onClick={() => (id === ACTIONS.resetEmergency ? setResetOpen(true) : send(label, id))}
               sx={{flex: {xs: '1 1 140px', md: '0 1 auto'}, minWidth: {xs: 0, md: 140}}}
             >
               {pending === id ? '…' : label}
@@ -109,6 +118,29 @@ export default function ActionBar() {
           </Typography>
         )}
       </CardContent>
+      <Dialog open={resetOpen} onClose={() => setResetOpen(false)}>
+        <DialogTitle>Reset emergency stop?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            The mower will be allowed to resume operation. Make sure the area is safe and the cause of the emergency
+            has been cleared.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetOpen(false)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={async () => {
+              setResetOpen(false);
+              await send('Reset emergency', ACTIONS.resetEmergency);
+            }}
+            disabled={pending !== null}
+          >
+            Reset
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }
