@@ -7,11 +7,13 @@ import {useTeleop} from '@/hooks/useTeleop';
 import {fmtAccuracy, fmtDeg, fmtXY} from '@/lib/format';
 import {MOWER_ACTIONS, type MowerActionId} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
+import {useSensorValue} from '@/stores/sensorsStore';
 import {useUiStore} from '@/stores/uiStore';
 import CameraCard from './CameraCard';
 import TelemetryStrip from './TelemetryStrip';
 import {
   Cancel as CancelIcon,
+  ContentCut as MowIcon,
   ExitToApp as ExitIcon,
   GpsFixed as GpsIcon,
   Home as HomeIcon,
@@ -37,7 +39,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import {ReactNode, useState} from 'react';
+import {ReactNode, useCallback, useEffect, useRef, useState} from 'react';
 
 // Manual driving page. Stays usable independently of the map editor — the
 // joystick was previously only available during AREA_RECORDING, which made
@@ -50,25 +52,85 @@ export default function DrivePage() {
   const setCap = useUiStore((s) => s.setTeleopSpeedCap);
   const {setVelocity} = useTeleop({cap});
   const state = useSelectedMower((s) => s?.state);
+  const mowerId = useSelectedMower((s) => s?.id);
+  const mowCurrent = useSensorValue(mowerId, 'om_mow_motor_current');
+  const mowTemp = useSensorValue(mowerId, 'om_mow_motor_temp');
+  const mowRpm = useSensorValue(mowerId, 'om_mow_motor_rpm');
   const [resetOpen, setResetOpen] = useState(false);
+  const [manualMowing, setManualMowing] = useState(false);
 
-  const triggerEmergency = () => {
+  const publishAction = useCallback((actionId: MowerActionId): boolean => {
     const {mowers, selected} = useMowersStore.getState();
     const mower = mowers[selected];
-    if (!mower) return;
-    mower.publishAction(MOWER_ACTIONS.setEmergency);
-    toast.warning('Emergency stop sent');
+    if (!mower) return false;
+    mower.publishAction(actionId);
+    return true;
+  }, []);
+
+  const triggerEmergency = () => {
+    if (publishAction(MOWER_ACTIONS.setEmergency)) {
+      toast.warning('Emergency stop sent');
+    }
   };
 
   const sendAction = (label: string, actionId: MowerActionId) => {
-    const {mowers, selected} = useMowersStore.getState();
-    const mower = mowers[selected];
-    if (!mower) return;
-    mower.publishAction(actionId);
-    toast.success(`${label} sent`);
+    if (publishAction(actionId)) {
+      toast.success(`${label} sent`);
+    }
   };
 
   const stateLabel = state?.current_state ?? 'UNKNOWN';
+  const inAreaRecording = stateLabel === 'AREA_RECORDING';
+  const emergency = state?.emergency === true;
+  const mowToggleDisabled = !state || !inAreaRecording || emergency;
+
+  const toggleMowMotor = () => {
+    if (manualMowing) {
+      if (publishAction(MOWER_ACTIONS.arManualMowOff)) {
+        toast.success('Mow motor stop sent');
+      }
+      setManualMowing(false);
+    } else {
+      if (publishAction(MOWER_ACTIONS.arManualMowOn)) {
+        toast.success('Mow motor start sent');
+      }
+      setManualMowing(true);
+    }
+  };
+
+  // Keep the local toggle in sync with the backend behavior. The
+  // AreaRecordingBehavior clears `manual_mowing` automatically when the user
+  // exits recording, and `setEmergencyMode` calls `stopBlade()` regardless of
+  // our toggle. Mirror that here and fire a defensive off-action so the UI
+  // and the backend can never disagree silently.
+  const manualMowingRef = useRef(manualMowing);
+  useEffect(() => {
+    manualMowingRef.current = manualMowing;
+  }, [manualMowing]);
+  useEffect(() => {
+    if (!manualMowing) return;
+    if (!inAreaRecording || emergency) {
+      publishAction(MOWER_ACTIONS.arManualMowOff);
+      // Mirroring external state from the MQTT-pushed behavior — the
+      // AreaRecordingBehavior clears `manual_mowing` itself on exit and
+      // setEmergencyMode calls stopBlade(); this setState keeps the UI
+      // in sync with that backend transition.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setManualMowing(false);
+    }
+  }, [manualMowing, inAreaRecording, emergency, publishAction]);
+
+  // Hard guarantee: leaving the drive page (route change, tab close in the
+  // common case) stops the mow motor. Mirrors useTeleop's final-zero-twist
+  // behavior — without this a user could swipe to /dashboard and leave the
+  // blade spinning until the behavior eventually exits.
+  useEffect(() => {
+    return () => {
+      if (manualMowingRef.current) {
+        publishAction(MOWER_ACTIONS.arManualMowOff);
+      }
+    };
+  }, [publishAction]);
   const stateColor: 'success' | 'error' | 'warning' | 'default' =
     state?.emergency
       ? 'error'
@@ -224,8 +286,46 @@ export default function DrivePage() {
             )}
           </CardContent>
         </Card>
-		
-		{/* Camera — only renders when MOWER_CAMERA_URL is set. Sits above the
+
+        {/* Mowing motor — start/stop while driving manually. Backend gates
+            this on AreaRecordingBehavior::handle_action; outside that state
+            the action is silently dropped, so the toggle is disabled. xESC
+            runs at fixed full speed — no RPM/PWM setpoint exists, hence no
+            slider here. */}
+        <Card sx={{mt: 2}}>
+          <CardContent>
+            <Typography variant="h6" fontWeight="600" sx={{mb: 1.5}}>
+              Mowing motor
+            </Typography>
+            <Button
+              fullWidth
+              variant="contained"
+              color={manualMowing ? 'warning' : 'success'}
+              startIcon={manualMowing ? <StopIcon /> : <MowIcon />}
+              onClick={toggleMowMotor}
+              disabled={mowToggleDisabled}
+            >
+              {manualMowing ? 'Stop mow motor' : 'Start mow motor'}
+            </Button>
+            <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2}}>
+              <MowReadout label="Current" value={fmtAmps(mowCurrent?.value)} />
+              <MowReadout label="Temperature" value={fmtCelsius(mowTemp?.value)} />
+              <MowReadout label="RPM" value={fmtRpm(mowRpm?.value)} />
+            </Box>
+            {!inAreaRecording && !emergency && (
+              <Alert severity="info" sx={{mt: 2}}>
+                Enter <b>AREA_RECORDING</b> to engage the mowing motor while driving manually.
+              </Alert>
+            )}
+            {emergency && (
+              <Alert severity="error" sx={{mt: 2}}>
+                Reset the emergency stop before starting the mow motor.
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Camera — only renders when MOWER_CAMERA_URL is set. Sits above the
             mode card so the operator sees the stream while reaching for the
             joystick or the mode-switch buttons. */}
         <CameraCard />
@@ -320,5 +420,33 @@ function PoseRow({icon, label, value}: {icon?: React.ReactNode; label: string; v
       </Typography>
     </Box>
   );
+}
+
+function MowReadout({label, value}: {label: string; value: string}) {
+  return (
+    <Box sx={{flex: '1 1 90px', minWidth: 90}}>
+      <Typography
+        variant="caption"
+        sx={{display: 'block', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.4}}
+      >
+        {label}
+      </Typography>
+      <Typography variant="body1" fontFamily="var(--font-dm-mono), monospace" fontWeight="600">
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+function fmtAmps(value: number | string | undefined): string {
+  return typeof value === 'number' ? `${value.toFixed(2)} A` : '—';
+}
+
+function fmtCelsius(value: number | string | undefined): string {
+  return typeof value === 'number' ? `${value.toFixed(1)} °C` : '—';
+}
+
+function fmtRpm(value: number | string | undefined): string {
+  return typeof value === 'number' ? `${Math.round(value)}` : '—';
 }
 
