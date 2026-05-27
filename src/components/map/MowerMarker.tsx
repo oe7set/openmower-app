@@ -2,7 +2,7 @@
 
 import {useSelectedMower} from '@/stores/mowersStore';
 import type {Datum} from '@/stores/schemas';
-import {useTheme} from '@mui/material';
+import {alpha, useTheme} from '@mui/material';
 import {useMemo} from 'react';
 import MapMarker from './MapMarker';
 
@@ -37,10 +37,9 @@ export function MowerArrow({scale = 1, fill}: MowerArrowProps) {
 
 interface MowerMarkerProps {
   datum: Datum;
-  isDocked: boolean;
 }
 
-export default function MowerMarker({datum, isDocked}: MowerMarkerProps) {
+export default function MowerMarker({datum}: MowerMarkerProps) {
   // Scalar selectors so the marker only re-renders when the displayed pose
   // changes — `state.pose` is a fresh reference on every robot_state message.
   const x = useSelectedMower((s) => s?.state.pose.x);
@@ -55,17 +54,45 @@ export default function MowerMarker({datum, isDocked}: MowerMarkerProps) {
     return {x, y};
   }, [x, y]);
 
-  if (!position || !hasPose || isDocked) return null;
+  if (!position || !hasPose) return null;
 
-  const markerColor = posAccuracy === 0 ? theme.palette.error.main : theme.palette.primary.main;
+  const hasAccuracy = posAccuracy !== undefined && posAccuracy > 0;
+  const markerColor = hasAccuracy ? theme.palette.primary.main : theme.palette.error.main;
+  // pos_accuracy is the radius (1-sigma) in meters; MapMarker's sizeM is the
+  // bounding diameter, so multiply by 2.
+  const accuracyDiameterM = hasAccuracy ? (posAccuracy as number) * 2 : 0;
 
   return (
-    <MapMarker position={position} heading={heading} sizeM={MOWER_LENGTH_M} datum={datum} className="mower-marker">
-      {(sizePx) => (
-        <svg width={sizePx} height={sizePx} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <MowerArrow fill={markerColor} />
-        </svg>
+    <>
+      {hasAccuracy && (
+        <MapMarker
+          position={position}
+          heading={0}
+          sizeM={accuracyDiameterM}
+          datum={datum}
+          className="mower-accuracy-circle"
+        >
+          {(sizePx) => (
+            <svg width={sizePx} height={sizePx} viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <circle
+                cx={16}
+                cy={16}
+                r={15}
+                fill={alpha(theme.palette.primary.main, 0.15)}
+                stroke={alpha(theme.palette.primary.main, 0.5)}
+                strokeWidth={1}
+              />
+            </svg>
+          )}
+        </MapMarker>
       )}
-    </MapMarker>
+      <MapMarker position={position} heading={heading} sizeM={MOWER_LENGTH_M} datum={datum} className="mower-marker">
+        {(sizePx) => (
+          <svg width={sizePx} height={sizePx} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <MowerArrow fill={markerColor} />
+          </svg>
+        )}
+      </MapMarker>
+    </>
   );
 }

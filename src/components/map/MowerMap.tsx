@@ -455,7 +455,7 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             datum={realDatum}
           />
         )}
-        {realDatum && <MowerMarker datum={realDatum} isDocked={isDocked} />}
+        {realDatum && <MowerMarker datum={realDatum} />}
         {showTeleop && <TeleopControls />}
         {currentState === 'AREA_RECORDING' && !editMode && <RecordingPanel />}
         <DialogOutlet />
