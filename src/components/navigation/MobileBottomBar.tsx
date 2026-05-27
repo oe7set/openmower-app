@@ -2,10 +2,9 @@
 
 import {useQuickActionsStore, type QuickActionsState} from '@/stores/quickActionsStore';
 import {useUiStore} from '@/stores/uiStore';
-import {Bolt as BoltIcon, Menu as MenuIcon} from '@mui/icons-material';
 import {BottomNavigation, BottomNavigationAction, Paper, useTheme} from '@mui/material';
 import {usePathname, useRouter} from 'next/navigation';
-import {createNavigationItems} from './navigationItems';
+import {NAV_ACTION_MENU, NAV_ACTION_QUICK, createNavigationItems} from './navigationItems';
 
 interface MobileBottomBarProps {
   onMenuOpen: () => void;
@@ -30,15 +29,7 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
     .map((path) => allItems.find((it) => it.path === path))
     .filter((it): it is NonNullable<typeof it> => Boolean(it));
   const activeIndex = navigationItems.findIndex((item) => item.path === pathname);
-  const value: number | 'menu' | 'quick' = activeIndex === -1 ? 'menu' : activeIndex;
-
-  const handleNavigation = (path: string) => {
-    router.push(path);
-  };
-
-  const handleMenuClick = () => {
-    onMenuOpen();
-  };
+  const value: number | false = activeIndex === -1 ? false : activeIndex;
 
   return (
     <Paper
@@ -62,12 +53,14 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
       <BottomNavigation
         value={value}
         onChange={(_, newValue) => {
-          if (newValue === 'menu') {
-            handleMenuClick();
-          } else if (newValue === 'quick') {
+          const item = navigationItems[newValue as number];
+          if (!item) return;
+          if (item.path === NAV_ACTION_MENU) {
+            onMenuOpen();
+          } else if (item.path === NAV_ACTION_QUICK) {
             openQuickActions();
           } else {
-            handleNavigation(navigationItems[newValue].path);
+            router.push(item.path);
           }
         }}
         sx={{
@@ -81,31 +74,22 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
           },
         }}
       >
-        <BottomNavigationAction
-          label="Menu"
-          icon={<MenuIcon />}
-          value="menu"
-          sx={{
-            '&.Mui-selected': {
-              color: theme.palette.secondary.main,
-            },
-          }}
-        />
-        <BottomNavigationAction
-          label="Quick"
-          icon={<BoltIcon />}
-          value="quick"
-          sx={{
-            // Distinguish from the Menu entry — pulling the same secondary
-            // hue would make them indistinguishable at a glance. The accent
-            // ('primary') matches the dashboard Start button so users can
-            // map the icon to "do something now".
-            color: theme.palette.primary.main,
-          }}
-        />
-        {navigationItems.map((item, idx) => (
-          <BottomNavigationAction key={item.path} value={idx} label={item.label} icon={item.icon} />
-        ))}
+        {navigationItems.map((item, idx) => {
+          // Action triggers get a distinct hue so they read as "do something
+          // now" rather than "you are here". Menu mirrors the secondary
+          // palette (matches the burger style elsewhere); Quick uses the
+          // primary accent so it lines up visually with the dashboard's
+          // Start button.
+          const sx =
+            item.path === NAV_ACTION_MENU
+              ? {color: theme.palette.secondary.main, '&.Mui-selected': {color: theme.palette.secondary.main}}
+              : item.path === NAV_ACTION_QUICK
+              ? {color: theme.palette.primary.main}
+              : undefined;
+          return (
+            <BottomNavigationAction key={item.path} value={idx} label={item.label} icon={item.icon} sx={sx} />
+          );
+        })}
       </BottomNavigation>
     </Paper>
   );

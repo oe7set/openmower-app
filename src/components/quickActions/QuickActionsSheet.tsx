@@ -9,7 +9,7 @@ import {
   BatteryFull as BatteryFullIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
-import {Box, Drawer, IconButton, LinearProgress, Typography, useTheme} from '@mui/material';
+import {Box, IconButton, LinearProgress, SwipeableDrawer, Typography, useTheme} from '@mui/material';
 import {useEffect, useState} from 'react';
 import QuickActions from './QuickActions';
 
@@ -41,10 +41,19 @@ function QuickActionsSheetInternal({open, onClose}: {open: boolean; onClose: () 
   );
 
   return (
-    <Drawer
+    <SwipeableDrawer
       anchor="bottom"
       open={open}
       onClose={onClose}
+      // The sheet is only ever opened by the Bolt trigger, so we suppress the
+      // global edge-swipe-to-open listener — that listener is the source of
+      // the `releasePointerCapture` console spam SwipeableDrawer is known for.
+      // Swipe-down-to-close still works because that uses the in-Paper
+      // listeners, which are only attached while open.
+      onOpen={() => {}}
+      disableSwipeToOpen
+      disableDiscovery
+      swipeAreaWidth={0}
       keepMounted={false}
       PaperProps={{
         sx: {
@@ -105,7 +114,7 @@ function QuickActionsSheetInternal({open, onClose}: {open: boolean; onClose: () 
         </Box>
         <QuickActions variant="sheet" onActionDispatched={onClose} />
       </Box>
-    </Drawer>
+    </SwipeableDrawer>
   );
 }
 

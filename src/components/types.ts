@@ -6,6 +6,10 @@ export interface NavigationItem {
   path: string;
   isGlobal: boolean;
   isPrimary?: boolean;
+  // Pseudo-item that fires a local trigger (e.g. open menu drawer, open
+  // quick-actions sheet) instead of routing. Skipped by the desktop sidebar;
+  // dispatched via path-prefix match by the mobile bottom bar.
+  isAction?: boolean;
 }
 
 export interface MowerConfig {

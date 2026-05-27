@@ -28,7 +28,10 @@ export default function Sidebar({open, onClose}: SidebarProps) {
   const mowerConfigs = useMowerConfigs();
   const selectedMowerId = useSelectedMower((s) => s?.id);
   const selectedMower = mowerConfigs.find((mower) => mower.id === selectedMowerId);
-  const navigationItems = createNavigationItems();
+  // Action items (Menu, Quick) are local triggers that only make sense in the
+  // mobile bottom bar — the sidebar is itself the menu, and the Quick trigger
+  // lives in the TopBar on desktop.
+  const navigationItems = createNavigationItems().filter((it) => !it.isAction);
 
   const handleNavigation = (path: string) => {
     router.push(path);

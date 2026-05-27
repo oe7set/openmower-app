@@ -1,10 +1,12 @@
 import {type NavigationItem} from '@/components/types';
 import {
   BarChart as StatsIcon,
+  Bolt as BoltIcon,
   BugReport as BugReportIcon,
   Dashboard as DashboardIcon,
   Description as LogsIcon,
   Map as MapIcon,
+  Menu as MenuIcon,
   Notifications as NotificationsIcon,
   Palette as PaletteIcon,
   Sensors as SensorIcon,
@@ -14,8 +16,16 @@ import {
   Whatshot as HeatmapIcon,
 } from '@mui/icons-material';
 
+// Pseudo-paths used by the mobile bottom bar to dispatch local triggers
+// instead of routing. The double-underscore prefix is a deliberate marker
+// that this is not a real route.
+export const NAV_ACTION_MENU = '__menu__';
+export const NAV_ACTION_QUICK = '__quick__';
+
 export function createNavigationItems(): NavigationItem[] {
   return [
+    {label: 'Menu', icon: <MenuIcon />, path: NAV_ACTION_MENU, isGlobal: false, isAction: true},
+    {label: 'Quick', icon: <BoltIcon />, path: NAV_ACTION_QUICK, isGlobal: false, isAction: true},
     {label: 'Dashboard', icon: <DashboardIcon />, path: '/', isGlobal: true, isPrimary: true},
     {label: 'Map', icon: <MapIcon />, path: '/map', isGlobal: false, isPrimary: true},
     {label: 'Drive', icon: <DriveIcon />, path: '/drive', isGlobal: false, isPrimary: true},

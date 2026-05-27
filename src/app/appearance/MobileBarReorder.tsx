@@ -48,7 +48,7 @@ export function MobileBarReorder({value, onChange}: MobileBarReorderProps) {
       <List dense disablePadding>
         {selected.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{pl: 2, py: 1, fontStyle: 'italic'}}>
-            No items selected — only the Menu button will appear.
+            No items selected — the bar will be empty.
           </Typography>
         )}
         {selected.map((item, idx) => (

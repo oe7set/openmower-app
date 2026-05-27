@@ -12,9 +12,12 @@ export type MotionMode = 'system' | 'full' | 'off';
 export type PageHeaderStyle = 'hero' | 'flat' | 'minimal';
 
 // Default ordered list of bottom-bar items by path. Mirrors the items
-// originally tagged isPrimary in createNavigationItems(). Kept here so
-// resetAppearance() and the v1→v2 migration can both reach for it.
-export const DEFAULT_BOTTOM_BAR_ITEMS: string[] = ['/', '/map', '/drive', '/tasks'];
+// originally tagged isPrimary in createNavigationItems(), with the two
+// action triggers (Menu, Quick) prepended so a fresh install shows the
+// same Bar layout the app shipped with before action items became
+// configurable. Kept here so resetAppearance() and the migration can
+// both reach for it.
+export const DEFAULT_BOTTOM_BAR_ITEMS: string[] = ['__menu__', '__quick__', '/', '/map', '/drive', '/tasks'];
 
 // Curated brand-accent presets shown as quick-pick swatches in the
 // Appearance page. The hex value of `forest` matches the original
@@ -147,17 +150,27 @@ export const useUiStore = create<UiStore>()(
     }),
     {
       name: 'openmower-ui',
-      version: 3,
+      version: 4,
       // v0 used 'white' as the plain-background style; rename it on load.
       // v1 → v2 introduces the appearance-prefs block; v2 → v3 adds the
       // batch-2 appearance keys (accent, font scale, radius, motion, page
-      // header, mower colours). Missing keys fall through to the store
-      // factory's defaults, so the migration only normalises legacy
-      // mapStyle values.
+      // header, mower colours). v3 → v4 prepends the new __menu__/__quick__
+      // action items to bottomBarItems so existing users keep their Menu
+      // trigger after the upgrade. Missing keys fall through to the store
+      // factory's defaults.
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version < 1 && state?.mapStyle === 'white') {
           state.mapStyle = 'plain';
+        }
+        if (version < 4 && Array.isArray(state?.bottomBarItems)) {
+          const items = state.bottomBarItems as string[];
+          const prepend: string[] = [];
+          if (!items.includes('__menu__')) prepend.push('__menu__');
+          if (!items.includes('__quick__')) prepend.push('__quick__');
+          if (prepend.length > 0) {
+            state.bottomBarItems = [...prepend, ...items];
+          }
         }
         return state as unknown as UiStore;
       },
