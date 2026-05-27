@@ -16,7 +16,9 @@ export function useTeleop({cap = 1}: UseTeleopOptions = {}) {
   const vel = useRef({vx: 0, vz: 0});
   const interval = useRef<ReturnType<typeof setInterval> | null>(null);
   const capRef = useRef(cap);
-  capRef.current = cap;
+  useEffect(() => {
+    capRef.current = cap;
+  }, [cap]);
 
   // Track which mower the active interval is publishing to, so a mower switch
   // can fire a final zero at the *previous* mower instead of orphaning it

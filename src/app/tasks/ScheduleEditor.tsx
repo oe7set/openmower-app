@@ -21,7 +21,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import {useEffect, useState} from 'react';
+import {useMemo, useState} from 'react';
 import {DEFAULT_RRULE_PARTS, partsToRrule, rruleToParts, WEEKDAYS, type Frequency} from './rrule';
 
 export interface Schedule {
@@ -49,14 +49,11 @@ interface ScheduleEditorProps {
 
 export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEditorProps) {
   const [draft, setDraft] = useState<Schedule>(initial);
-  // Decompose the RRULE for the form; whenever the form fields change we
-  // recompose it back into draft.rrule so the saved value matches what
-  // mower_scheduler can parse.
+  // Decompose the RRULE for the form; the recomposed value is derived (not
+  // mirrored into draft) so the form fields stay the single source of truth
+  // and we avoid an effect-driven cascade on every keystroke.
   const [parts, setParts] = useState(() => rruleToParts(initial.rrule || partsToRrule(DEFAULT_RRULE_PARTS)));
-
-  useEffect(() => {
-    setDraft((d) => ({...d, rrule: partsToRrule(parts)}));
-  }, [parts]);
+  const rrule = useMemo(() => partsToRrule(parts), [parts]);
 
   const update = (patch: Partial<Schedule>) => setDraft((d) => ({...d, ...patch}));
 
@@ -203,7 +200,7 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
           </Box>
 
           <Typography variant="caption" color="text.disabled" sx={{fontFamily: 'monospace', wordBreak: 'break-all'}}>
-            {draft.rrule}
+            {rrule}
           </Typography>
         </Box>
       </DialogContent>
@@ -211,8 +208,8 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
         <Button onClick={onCancel}>Cancel</Button>
         <Button
           variant="contained"
-          onClick={() => onSave(draft)}
-          disabled={!draft.name || !draft.rrule || draft.duration_minutes <= 0}
+          onClick={() => onSave({...draft, rrule})}
+          disabled={!draft.name || !rrule || draft.duration_minutes <= 0}
         >
           Save
         </Button>

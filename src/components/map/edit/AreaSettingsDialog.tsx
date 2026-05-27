@@ -16,40 +16,59 @@ import {
   Switch,
   TextField,
 } from '@mui/material';
-import {useEffect, useState} from 'react';
+import {useState} from 'react';
 import {AsyncDialogProps} from 'react-dialog-async';
 import MapDialog from '../MapDialog';
 
-export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
+interface FormState {
+  name: string;
+  type: AreaProps['type'];
+  active: boolean;
+}
+
+export function AreaSettingsDialog(props: AsyncDialogProps) {
+  const draw = useMapboxDraw();
+  const selectedIds = useMapSelection();
+
+  if (selectedIds.length === 0 || !draw) {
+    return null;
+  }
+
+  // Re-mount the form whenever the selected feature changes so the form's
+  // initial values come straight from the draw store via a lazy state init —
+  // this avoids syncing them via a setState-in-effect cascade.
+  return <AreaSettingsForm key={selectedIds[0]} featureId={selectedIds[0]} {...props} />;
+}
+
+interface AreaSettingsFormProps extends AsyncDialogProps {
+  featureId: string;
+}
+
+function AreaSettingsForm({featureId, isOpen, handleClose}: AreaSettingsFormProps) {
   const map = useMap();
   const draw = useMapboxDraw();
   const {features} = useMapContext();
-  const selectedIds = useMapSelection();
-  const [name, setName] = useState('');
-  const [type, setType] = useState<AreaProps['type']>('draft');
-  const [active, setActive] = useState(true);
 
-  // Initialize form values when dialog opens or selected area changes
-  useEffect(() => {
-    if (selectedIds.length === 0 || !draw) return;
-    const selectedArea = draw!.get(selectedIds[0]);
-    const properties = selectedArea!.properties! as AreaProps;
-    setName(properties.name ?? '');
-    setType(properties.type ?? 'draft');
-    setActive(properties.active ?? true);
-  }, [draw, selectedIds]);
+  const [form, setForm] = useState<FormState>(() => {
+    const properties = (draw?.get(featureId)?.properties ?? {}) as Partial<AreaProps>;
+    return {
+      name: properties.name ?? '',
+      type: properties.type ?? 'draft',
+      active: properties.active ?? true,
+    };
+  });
 
   const handleSave = () => {
-    if (!map || !draw || selectedIds.length === 0) return;
-
-    const feature = draw.get(selectedIds[0])!;
+    if (!map || !draw) return;
+    const feature = draw.get(featureId);
+    if (!feature) return;
     const index = features.features.findIndex((f) => f.id === feature.id);
     feature.properties = {
       ...feature.properties,
-      name,
-      type,
-      active,
-      sort_key: displaySortKey(index, type, features.features),
+      name: form.name,
+      type: form.type,
+      active: form.active,
+      sort_key: displaySortKey(index, form.type, features.features),
     };
     draw.add(feature);
     map.fire(MapboxDraw.constants.events.UPDATE, {features: [feature]});
@@ -57,18 +76,14 @@ export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
     handleClose();
   };
 
-  if (selectedIds.length === 0) {
-    return null;
-  }
-
   return (
     <MapDialog open={isOpen} onClose={() => handleClose()} fullWidth maxWidth="xs">
       <DialogTitle>Area Settings</DialogTitle>
       <DialogContent>
         <TextField
           label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={form.name}
+          onChange={(e) => setForm((f) => ({...f, name: e.target.value}))}
           fullWidth
           margin="normal"
           variant="outlined"
@@ -78,8 +93,8 @@ export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
         <FormControl fullWidth margin="normal">
           <InputLabel>Type</InputLabel>
           <Select
-            value={type}
-            onChange={(e) => setType(e.target.value as AreaProps['type'])}
+            value={form.type}
+            onChange={(e) => setForm((f) => ({...f, type: e.target.value as AreaProps['type']}))}
             label="Type"
             MenuProps={{
               disablePortal: true,
@@ -93,14 +108,16 @@ export function AreaSettingsDialog({isOpen, handleClose}: AsyncDialogProps) {
         </FormControl>
 
         <FormControlLabel
-          control={<Switch checked={active} onChange={(e) => setActive(e.target.checked)} />}
+          control={
+            <Switch checked={form.active} onChange={(e) => setForm((f) => ({...f, active: e.target.checked}))} />
+          }
           label="Active"
           sx={{mt: 2}}
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={() => handleClose()}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained" disabled={name === ''}>
+        <Button onClick={handleSave} variant="contained" disabled={form.name === ''}>
           Save
         </Button>
       </DialogActions>

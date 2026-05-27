@@ -394,7 +394,7 @@ function SettingsFormContent({formState}: {formState: FormState}) {
             ))}
 
             <ConfirmedValuesDebug
-              confirmedFieldsRef={confirmedFieldsRef}
+              isEmpty={confirmedFields.size === 0}
               getConfirmedValues={getConfirmedValues}
               defaults={formState.defaults}
             />
@@ -517,12 +517,12 @@ function RestartHint({
 }
 
 interface ConfirmedValuesDebugProps {
-  confirmedFieldsRef: React.RefObject<Set<string>>;
+  isEmpty: boolean;
   getConfirmedValues: () => Record<string, unknown>;
   defaults: Record<string, unknown>;
 }
 
-function ConfirmedValuesDebug({confirmedFieldsRef, getConfirmedValues, defaults}: ConfirmedValuesDebugProps) {
+function ConfirmedValuesDebug({isEmpty, getConfirmedValues, defaults}: ConfirmedValuesDebugProps) {
   useWatch({});
   const {
     formState: {errors},
@@ -531,7 +531,6 @@ function ConfirmedValuesDebug({confirmedFieldsRef, getConfirmedValues, defaults}
   const [showMerged, setShowMerged] = useState(false);
 
   const confirmed = getConfirmedValues();
-  const isEmpty = confirmedFieldsRef.current.size === 0;
 
   const merged = deepMergeNoArrayMerge(defaults, confirmed);
   const displayed = showMerged ? merged : confirmed;

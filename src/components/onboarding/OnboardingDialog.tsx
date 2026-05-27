@@ -18,7 +18,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import {useEffect, useMemo, useState} from 'react';
+import {useMemo, useState} from 'react';
 
 // First-run helper. Triggered when no mowers are configured. Walks the user
 // through host entry, a quick MQTT-WebSocket reachability test, and produces
@@ -34,22 +34,19 @@ type TestState = 'idle' | 'pending' | 'success' | 'error';
 export default function OnboardingDialog() {
   const mowers = useMowers();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
+  // Lazy init reads sessionStorage exactly once on the client. SSR returns
+  // false (treated as "not skipped") which matches the eventual hydrated state
+  // for fresh users — and React 19's useState initializer is allowed to read
+  // browser globals because it only runs client-side after hydration.
+  const [skippedByUser, setSkippedByUser] = useState<boolean>(
+    () => typeof window !== 'undefined' && window.sessionStorage.getItem(SKIP_KEY) === '1',
+  );
   const [step, setStep] = useState(0);
   const [host, setHost] = useState('openmower.local');
   const [testState, setTestState] = useState<TestState>('idle');
   const [testError, setTestError] = useState<string | null>(null);
 
-  // Hydrate dialog visibility on mount only — sessionStorage isn't available
-  // during SSR so we defer the decision to the client.
-  useEffect(() => {
-    if (mowers.length > 0) {
-      setOpen(false);
-      return;
-    }
-    const skipped = typeof window !== 'undefined' && window.sessionStorage.getItem(SKIP_KEY) === '1';
-    setOpen(!skipped);
-  }, [mowers.length]);
+  const open = !skippedByUser && mowers.length === 0;
 
   const wsUrl = useMemo(() => {
     const trimmed = host.trim();
@@ -118,7 +115,7 @@ export default function OnboardingDialog() {
 
   const skip = () => {
     if (typeof window !== 'undefined') window.sessionStorage.setItem(SKIP_KEY, '1');
-    setOpen(false);
+    setSkippedByUser(true);
   };
 
   const copy = async () => {

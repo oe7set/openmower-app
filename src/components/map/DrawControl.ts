@@ -70,7 +70,7 @@ export function DrawControl({
         });
       }
     },
-    [setFeatures, onFeaturesCreated],
+    [draw, setFeatures, onFeaturesCreated],
   );
 
   const onModeChange = useCallback(

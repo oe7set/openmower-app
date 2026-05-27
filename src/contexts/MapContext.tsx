@@ -13,33 +13,24 @@ import React, {
   useCallback,
   useContext,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {Updater, useImmer} from 'use-immer';
 
 type Bounds = [west: number, south: number, east: number, north: number];
 
-function useBounds(features: FeatureCollection, datum: Datum) {
-  const previousBoundsRef = useRef<Bounds | null>(null);
-  return useMemo(() => {
-    const newBounds: Bounds =
-      features.features.length > 0 ? (bbox(features) as Bounds) : [datum.long, datum.lat, datum.long, datum.lat];
-
-    const previous = previousBoundsRef.current;
-    if (previous && boundsEqual(previous, newBounds)) {
-      return previous;
-    }
-
-    previousBoundsRef.current = newBounds;
-    return newBounds;
-  }, [features]);
-}
-
-function boundsEqual(a: Bounds, b: Bounds): boolean {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+function useBounds(features: FeatureCollection, datum: Datum): Bounds {
+  // Identity may churn on every render — consumers that care about reacting only
+  // to content changes should depend on the four numbers individually (see
+  // MowerMap's bounds-changed effect).
+  return useMemo<Bounds>(() => {
+    return features.features.length > 0
+      ? (bbox(features) as Bounds)
+      : [datum.long, datum.lat, datum.long, datum.lat];
+  }, [features, datum]);
 }
 
 type SetFeatures = (
@@ -114,7 +105,9 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
 
   // Keep a ref to the current features so undo/redo callbacks don't go stale.
   const featuresRef = useRef(features);
-  featuresRef.current = features;
+  useEffect(() => {
+    featuresRef.current = features;
+  }, [features]);
 
   const setFeatures = useCallback<SetFeatures>(
     (recipe, userChange = true) => {
@@ -150,12 +143,19 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
     return snapshot;
   }, [future, setFeaturesImmer]);
 
-  useEffect(() => {
-    if (!editMode) {
-      setPast([]);
-      setFuture([]);
-    }
-  }, [editMode]);
+  // Wrap setEditMode so leaving edit mode also clears the undo/redo history.
+  // Doing this here (instead of in an effect on editMode) keeps the reset
+  // synchronous with the user's intent and avoids a setState-in-effect pass.
+  const setEditModeWrapped = useCallback<Dispatch<SetStateAction<boolean>>>((next) => {
+    setEditMode((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next;
+      if (!value) {
+        setPast([]);
+        setFuture([]);
+      }
+      return value;
+    });
+  }, []);
 
   return (
     <MapContext
@@ -168,7 +168,7 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
         bounds,
         issues,
         editMode,
-        setEditMode,
+        setEditMode: setEditModeWrapped,
         drawMode,
         setDrawMode,
         drawWorkflow,
@@ -210,9 +210,12 @@ export function useMapboxDraw() {
 export function useFitToBounds() {
   const map = useMap();
   const {bounds} = useMapContext();
-  return useEffectEvent((immediate: boolean = false, padding = {top: 10, bottom: 10, left: 60, right: 60}) => {
-    map?.fitBounds(bounds, {padding, duration: immediate ? 0 : 1000});
-  });
+  return useCallback(
+    (immediate: boolean = false, padding = {top: 10, bottom: 10, left: 60, right: 60}) => {
+      map?.fitBounds(bounds, {padding, duration: immediate ? 0 : 1000});
+    },
+    [map, bounds],
+  );
 }
 
 export function useMapHover(): [string | null, Dispatch<SetStateAction<string | null>>] {
@@ -223,20 +226,43 @@ export function useMapHover(): [string | null, Dispatch<SetStateAction<string | 
 export function useMapSelection() {
   const map = useMap();
   const draw = useMapboxDraw();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  useEffect(() => {
-    if (map && draw) {
-      setSelectedIds(draw.getSelectedIds());
-      const updateSelectedIds = ({features}: {features: Feature[]}) => {
-        setSelectedIds(features.map((feature) => feature.id as string));
-      };
-      map?.on('draw.selectionchange', updateSelectedIds);
+  // Track the selection via useSyncExternalStore: getSnapshot is the source of
+  // truth (re-evaluated on every selectionchange tick), so React reads the
+  // current value during render without an effect-driven mirror state.
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (!map) return () => {};
+      map.on('draw.selectionchange', onChange);
       return () => {
-        map.off('draw.selectionchange', updateSelectedIds);
+        map.off('draw.selectionchange', onChange);
       };
-    } else {
-      setSelectedIds([]);
+    },
+    [map],
+  );
+  const cacheRef = useRef<{key: MapboxDraw | null; ids: string[]} | null>(null);
+  const getSnapshot = useCallback((): string[] => {
+    if (!draw) return EMPTY_SELECTION;
+    const ids = draw.getSelectedIds();
+    // Cache by content so the snapshot identity is stable while the actual
+    // selection is unchanged — required by useSyncExternalStore.
+    const cache = cacheRef.current;
+    if (cache && cache.key === draw && idsEqual(cache.ids, ids)) {
+      return cache.ids;
     }
-  }, [map, draw]);
-  return selectedIds;
+    cacheRef.current = {key: draw, ids};
+    return ids;
+  }, [draw]);
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+const EMPTY_SELECTION: string[] = [];
+
+function getServerSnapshot(): string[] {
+  return EMPTY_SELECTION;
+}
+
+function idsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }

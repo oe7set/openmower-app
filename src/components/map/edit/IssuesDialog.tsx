@@ -1,5 +1,6 @@
 'use client';
 
+import {type MapIssue} from '@/utils/map-issues';
 import {useMapboxDraw, useMapContext, withDisplaySortKeys} from '@/contexts/MapContext';
 import {
   Button,
@@ -14,18 +15,27 @@ import {
 } from '@mui/material';
 import {featureCollection} from '@turf/helpers';
 import {BadgeCheckIcon, WrenchIcon} from 'lucide-react';
-import {useEffect, useState} from 'react';
+import {useState} from 'react';
 import {AsyncDialogProps} from 'react-dialog-async';
 import MapDialog from '../MapDialog';
 
-export function IssuesDialog({isOpen, handleClose}: AsyncDialogProps<void, void>) {
-  const {issues, setFeatures, features} = useMapContext();
+export function IssuesDialog(props: AsyncDialogProps<void, void>) {
+  const {issues} = useMapContext();
+  // Re-mount the inner form whenever the set of issues changes so the
+  // initial "all selected" state comes from a lazy useState init instead of
+  // a setState-in-effect cascade.
+  const issuesKey = issues.map((i) => i.id).join('|');
+  return <IssuesDialogBody key={issuesKey} issues={issues} {...props} />;
+}
+
+interface IssuesDialogBodyProps extends AsyncDialogProps<void, void> {
+  issues: MapIssue[];
+}
+
+function IssuesDialogBody({issues, isOpen, handleClose}: IssuesDialogBodyProps) {
+  const {setFeatures, features} = useMapContext();
   const draw = useMapboxDraw();
   const [selected, setSelected] = useState<Set<string>>(() => new Set(issues.map((i) => i.id)));
-
-  useEffect(() => {
-    setSelected(new Set(issues.map((i) => i.id)));
-  }, [issues]);
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {

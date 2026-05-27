@@ -123,9 +123,12 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
     if (!editMode) fitToBounds(true, padding);
   });
 
+  // Depend on the bounds tuple's primitive values so a re-render of MapContext
+  // that produces an equal-but-fresh array doesn't refire the fit.
+  const [west, south, east, north] = bounds;
   useEffect(() => {
     onBoundsChanged();
-  }, [bounds]);
+  }, [west, south, east, north]);
 
   // Mirror source for hover hit-testing. Uses promoteId so layer-scoped mouse
   // events return a usable string id.

@@ -468,7 +468,14 @@ function TopicsSection({mowerId, lastSeen}: {mowerId: string; lastSeen: Record<s
   // freeze. Cheap because we only read a number.
   useMowersStore((s) => s.lastSeenTick);
   const theme = useTheme();
-  const now = Date.now();
+  // Heartbeat clock: refreshing `now` from a 1 s interval keeps the displayed
+  // ages monotonic without calling Date.now() during render (which the React
+  // 19 purity rule rightly flags as unstable).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const handle = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(handle);
+  }, []);
   const rows: {topic: ExpectedTopic; live: boolean; lastMs?: number}[] = EXPECTED_TOPICS.map((spec) => ({
     topic: spec.topic,
     live: spec.live,
