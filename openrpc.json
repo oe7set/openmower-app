@@ -76,6 +76,19 @@
       }
     },
     {
+      "name": "mower.return_home",
+      "summary": "Tell the mower to return to its docking station, regardless of the current state.",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "Acknowledgement of the dispatched COMMAND_HOME service call.",
+        "schema": {
+          "type": "object",
+          "properties": {"ok": {"type": "boolean"}}
+        }
+      }
+    },
+    {
       "name": "meta.rpc.ping",
       "summary": "Ping the meta server.",
       "params": [],

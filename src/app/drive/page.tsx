@@ -51,7 +51,19 @@ export default function DrivePage() {
   const cap = useUiStore((s) => s.teleopSpeedCap);
   const setCap = useUiStore((s) => s.setTeleopSpeedCap);
   const {setVelocity} = useTeleop({cap});
-  const state = useSelectedMower((s) => s?.state);
+  // Subscribe to scalar slices instead of the whole `state` object — the
+  // Mower's state is rewritten by immer on every robot_state message, so a
+  // broad selector would re-render this whole page (including the joystick
+  // and camera card) at MQTT frequency.
+  const currentState = useSelectedMower((s) => s?.state.current_state);
+  const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
+  const heading = useSelectedMower((s) => s?.state.pose.heading);
+  const poseX = useSelectedMower((s) => s?.state.pose.x);
+  const poseY = useSelectedMower((s) => s?.state.pose.y);
+  const posAccuracy = useSelectedMower((s) => s?.state.pose.pos_accuracy);
+  const gpsPercentage = useSelectedMower((s) => s?.state.gps_percentage);
+  const battery = useSelectedMower((s) => s?.state.battery_percentage);
+  const hasState = useSelectedMower((s) => Boolean(s?.state));
   const mowerId = useSelectedMower((s) => s?.id);
   const mowCurrent = useSensorValue(mowerId, 'om_mow_motor_current');
   const mowTemp = useSensorValue(mowerId, 'om_mow_motor_temp');
@@ -79,10 +91,9 @@ export default function DrivePage() {
     }
   };
 
-  const stateLabel = state?.current_state ?? 'UNKNOWN';
+  const stateLabel = currentState ?? 'UNKNOWN';
   const inAreaRecording = stateLabel === 'AREA_RECORDING';
-  const emergency = state?.emergency === true;
-  const mowToggleDisabled = !state || !inAreaRecording || emergency;
+  const mowToggleDisabled = !hasState || !inAreaRecording || emergency;
 
   const toggleMowMotor = () => {
     if (manualMowing) {
@@ -132,7 +143,7 @@ export default function DrivePage() {
     };
   }, [publishAction]);
   const stateColor: 'success' | 'error' | 'warning' | 'default' =
-    state?.emergency
+    emergency
       ? 'error'
       : stateLabel === 'MOWING' || stateLabel === 'AREA_RECORDING'
       ? 'success'
@@ -144,8 +155,8 @@ export default function DrivePage() {
     <Page>
       <PageHeader title="Drive" subtitle="Manually pilot the mower with the virtual joystick">
         <HeaderStat icon={<SpeedIcon />} value={`${Math.round(cap * 100)}%`} label="Speed cap" />
-        <HeaderStat icon={<HeadingIcon />} value={fmtDeg(state?.pose?.heading)} label="Heading" />
-        <HeaderStat icon={<GpsIcon />} value={`${state?.gps_percentage ?? 0}%`} label="GPS" />
+        <HeaderStat icon={<HeadingIcon />} value={fmtDeg(heading)} label="Heading" />
+        <HeaderStat icon={<GpsIcon />} value={`${gpsPercentage ?? 0}%`} label="GPS" />
       </PageHeader>
       <PageContent>
         <TelemetryStrip />
@@ -159,11 +170,11 @@ export default function DrivePage() {
                 </Typography>
                 <Chip label={stateLabel} color={stateColor} size="small" sx={{fontWeight: 600}} />
               </Box>
-              <PoseRow icon={<HeadingIcon fontSize="small" />} label="Heading" value={fmtDeg(state?.pose?.heading)} />
-              <PoseRow icon={<GpsIcon fontSize="small" />} label="Position" value={fmtXY(state?.pose?.x, state?.pose?.y)} />
-              <PoseRow label="GPS quality" value={`${state?.gps_percentage ?? 0}%`} />
-              <PoseRow label="Pos. accuracy" value={fmtAccuracy(state?.pose?.pos_accuracy)} />
-              <PoseRow label="Battery" value={`${state?.battery_percentage ?? 0}%`} />
+              <PoseRow icon={<HeadingIcon fontSize="small" />} label="Heading" value={fmtDeg(heading)} />
+              <PoseRow icon={<GpsIcon fontSize="small" />} label="Position" value={fmtXY(poseX, poseY)} />
+              <PoseRow label="GPS quality" value={`${gpsPercentage ?? 0}%`} />
+              <PoseRow label="Pos. accuracy" value={fmtAccuracy(posAccuracy)} />
+              <PoseRow label="Battery" value={`${battery ?? 0}%`} />
             </CardContent>
           </Card>
 
@@ -197,7 +208,7 @@ export default function DrivePage() {
                 startIcon={<StopIcon />}
                 sx={{mt: 3}}
                 onClick={triggerEmergency}
-                disabled={!state}
+                disabled={!hasState}
               >
                 Emergency stop
               </Button>
@@ -216,7 +227,7 @@ export default function DrivePage() {
               Mode
             </Typography>
             <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1}}>
-              {state?.emergency && (
+              {emergency && (
                 <ModeBtn
                   label="Reset emergency"
                   icon={<WarningIcon />}
@@ -278,7 +289,7 @@ export default function DrivePage() {
                 />
               )}
             </Box>
-            {stateLabel !== 'AREA_RECORDING' && !state?.emergency && (
+            {stateLabel !== 'AREA_RECORDING' && !emergency && (
               <Alert severity="info" sx={{mt: 2}}>
                 The joystick only moves the mower while it&apos;s in <b>AREA_RECORDING</b>. Click
                 <i> Enter recording</i> to take manual control.

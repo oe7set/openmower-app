@@ -1,7 +1,8 @@
 'use client';
 
+import {useQuickActionsStore, type QuickActionsState} from '@/stores/quickActionsStore';
 import {useUiStore} from '@/stores/uiStore';
-import {Menu as MenuIcon} from '@mui/icons-material';
+import {Bolt as BoltIcon, Menu as MenuIcon} from '@mui/icons-material';
 import {BottomNavigation, BottomNavigationAction, Paper, useTheme} from '@mui/material';
 import {usePathname, useRouter} from 'next/navigation';
 import {createNavigationItems} from './navigationItems';
@@ -10,12 +11,15 @@ interface MobileBottomBarProps {
   onMenuOpen: () => void;
 }
 
+const selectOpenSheet = (s: QuickActionsState) => s.openSheet;
+
 export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
   const theme = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const bottomBarItems = useUiStore((s) => s.bottomBarItems);
   const density = useUiStore((s) => s.density);
+  const openQuickActions = useQuickActionsStore(selectOpenSheet);
 
   // Look up each saved path against the current navigation list. Drop any
   // misses so a path that gets renamed in code (or that this user once
@@ -26,7 +30,7 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
     .map((path) => allItems.find((it) => it.path === path))
     .filter((it): it is NonNullable<typeof it> => Boolean(it));
   const activeIndex = navigationItems.findIndex((item) => item.path === pathname);
-  const value: number | 'menu' = activeIndex === -1 ? 'menu' : activeIndex;
+  const value: number | 'menu' | 'quick' = activeIndex === -1 ? 'menu' : activeIndex;
 
   const handleNavigation = (path: string) => {
     router.push(path);
@@ -60,6 +64,8 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
         onChange={(_, newValue) => {
           if (newValue === 'menu') {
             handleMenuClick();
+          } else if (newValue === 'quick') {
+            openQuickActions();
           } else {
             handleNavigation(navigationItems[newValue].path);
           }
@@ -83,6 +89,18 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
             '&.Mui-selected': {
               color: theme.palette.secondary.main,
             },
+          }}
+        />
+        <BottomNavigationAction
+          label="Quick"
+          icon={<BoltIcon />}
+          value="quick"
+          sx={{
+            // Distinguish from the Menu entry — pulling the same secondary
+            // hue would make them indistinguishable at a glance. The accent
+            // ('primary') matches the dashboard Start button so users can
+            // map the icon to "do something now".
+            color: theme.palette.primary.main,
           }}
         />
         {navigationItems.map((item, idx) => (

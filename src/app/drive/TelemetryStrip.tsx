@@ -136,19 +136,27 @@ function MetricPill({icon, label, value, color = 'default'}: MetricPillProps) {
 export default function TelemetryStrip() {
   const theme = useTheme();
   const mowerId = useSelectedMower((s) => s?.id);
-  const state = useSelectedMower((s) => s?.state);
+  // Subscribe to scalar slices instead of the whole state object so the strip
+  // only re-renders when the value displayed actually changes — the state
+  // object reference is rewritten by immer on every robot_state message.
+  const emergency = useSelectedMower((s) => s?.state.emergency ?? false);
+  const rainDetected = useSelectedMower((s) => s?.state.rain_detected ?? false);
+  const battery = useSelectedMower((s) => s?.state.battery_percentage ?? null);
+  const isCharging = useSelectedMower((s) => s?.state.is_charging ?? false);
+  const wifiSignalDbm = useSelectedMower((s) => s?.state.wifi_signal_dbm);
+  const wifiLinkQuality = useSelectedMower((s) => s?.state.wifi_link_quality);
+  const gpsPct = useSelectedMower((s) => s?.state.gps_percentage ?? null);
+  const fixType = useSelectedMower((s) => s?.state.gps_fix_type);
+  const sats = useSelectedMower((s) => s?.state.gps_satellite_count);
+  const posAccuracy = useSelectedMower((s) => s?.state.pose.pos_accuracy);
+  const heading = useSelectedMower((s) => s?.state.pose.heading);
+  const currentState = useSelectedMower((s) => s?.state.current_state);
   const power = useDerivedPower(mowerId);
 
   const wifi = useMemo(
-    () => resolveWifiQuality(state?.wifi_signal_dbm, state?.wifi_link_quality),
-    [state?.wifi_signal_dbm, state?.wifi_link_quality],
+    () => resolveWifiQuality(wifiSignalDbm, wifiLinkQuality),
+    [wifiSignalDbm, wifiLinkQuality],
   );
-
-  const battery = state?.battery_percentage ?? null;
-  const isCharging = state?.is_charging ?? false;
-  const gpsPct = state?.gps_percentage ?? null;
-  const fixType = state?.gps_fix_type;
-  const sats = state?.gps_satellite_count;
 
   return (
     <Box
@@ -179,7 +187,7 @@ export default function TelemetryStrip() {
         },
       }}
     >
-      {state?.emergency && (
+      {emergency && (
         <Chip
           icon={<WarningIcon />}
           label="EMERGENCY"
@@ -188,7 +196,7 @@ export default function TelemetryStrip() {
           sx={{fontWeight: 700, flex: '0 0 auto'}}
         />
       )}
-      {state?.rain_detected && (
+      {rainDetected && (
         <Chip
           icon={<RainIcon />}
           label="Rain"
@@ -238,13 +246,13 @@ export default function TelemetryStrip() {
       <MetricPill
         icon={<PinDropIcon />}
         label="Accuracy"
-        value={fmtAccuracy(state?.pose?.pos_accuracy)}
+        value={fmtAccuracy(posAccuracy)}
       />
 
       <MetricPill
         icon={<HeadingIcon />}
         label="Heading"
-        value={fmtDeg(state?.pose?.heading)}
+        value={fmtDeg(heading)}
       />
 
       <MetricPill
@@ -262,7 +270,7 @@ export default function TelemetryStrip() {
       <MetricPill
         icon={<SpeedIcon />}
         label="State"
-        value={state?.current_state ?? '—'}
+        value={currentState ?? '—'}
       />
     </Box>
   );

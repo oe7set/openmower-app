@@ -17,6 +17,7 @@ export const MOWER_ACTIONS = {
   pause: 'mower_logic:mowing/pause',
   continueMowing: 'mower_logic:mowing/continue',
   abortMowing: 'mower_logic:mowing/abort_mowing',
+  abortToIdle: 'mower_logic:mowing/abort_to_idle',
   skipArea: 'mower_logic:mowing/skip_area',
   skipPath: 'mower_logic:mowing/skip_path',
 

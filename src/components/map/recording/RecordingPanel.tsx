@@ -23,10 +23,10 @@ export default function RecordingPanel() {
   const toast = useToast();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const subState = useSelectedMower((s) => s?.state.current_sub_state ?? '');
-  const selected = useSelectedMower((s) => s);
+  const actions = useSelectedMower((s) => s?.actions);
   const [pending, setPending] = useState<string | null>(null);
 
-  const isEnabled = (id: string) => selected?.isActionEnabled(id) ?? false;
+  const isEnabled = (id: string) => actions?.some((a) => a.action_id === id && a.enabled) ?? false;
 
   const send = async (label: string, actionId: string) => {
     const {mowers, selected: idx} = useMowersStore.getState();

@@ -4,10 +4,12 @@ import {useToast} from '@/hooks/useToast';
 import {useMowerColor} from '@/lib/mowerColors';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useConnectionDiagnostic, useMowersStore, useSelectedMower} from '@/stores/mowersStore';
+import {useQuickActionsStore, type QuickActionsState} from '@/stores/quickActionsStore';
 import {useTopBarTitleStore} from '@/stores/topBarTitleStore';
 import {useUiStore, type ThemeMode} from '@/stores/uiStore';
 import {useUnreadForActive} from '@/stores/notificationsStore';
 import {
+  Bolt as BoltIcon,
   Brightness4,
   DarkMode,
   LightMode,
@@ -49,6 +51,8 @@ const blink = keyframes`
   50% { opacity: 0.25; }
 `;
 
+const selectOpenSheet = (s: QuickActionsState) => s.openSheet;
+
 export default function TopBar({onMenuOpen}: TopBarProps) {
   const theme = useTheme();
   const toast = useToast();
@@ -64,6 +68,7 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
   const diag = useConnectionDiagnostic();
   const unreadEvents = useUnreadForActive();
   const minimalTitle = useTopBarTitleStore((s) => s.title);
+  const openQuickActions = useQuickActionsStore(selectOpenSheet);
 
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
@@ -257,6 +262,18 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
           </IconButton>
         </Tooltip>
       )}
+
+      <Tooltip title="Quick actions">
+        <IconButton
+          aria-label="Open quick actions"
+          onClick={openQuickActions}
+          // Desktop-only: mobile reaches the same sheet through the
+          // MobileBottomBar entry, so we hide this to avoid duplicate triggers.
+          sx={{display: {xs: 'none', md: 'inline-flex'}}}
+        >
+          <BoltIcon />
+        </IconButton>
+      </Tooltip>
 
       <Tooltip title={unreadEvents > 0 ? `${unreadEvents} unread notification${unreadEvents === 1 ? '' : 's'}` : 'Notifications'}>
         <IconButton

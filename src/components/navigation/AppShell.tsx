@@ -5,6 +5,7 @@ import {Box} from '@mui/material';
 import {useRef, useState} from 'react';
 import ConnectionBanner from '../diagnostics/ConnectionBanner';
 import OnboardingDialog from '../onboarding/OnboardingDialog';
+import QuickActionsSheet from '../quickActions/QuickActionsSheet';
 import MobileBottomBar from './MobileBottomBar';
 import {ScrollContainerProvider} from './ScrollContainerContext';
 import Sidebar from './sidebar/Sidebar';
@@ -49,6 +50,7 @@ export default function AppShell({children}: {children: React.ReactNode}) {
           </Box>
         </Box>
         {bottomBarEnabled && <MobileBottomBar onMenuOpen={() => setMobileMenuOpen(true)} />}
+        <QuickActionsSheet />
         <OnboardingDialog />
       </Box>
     </ScrollContainerProvider>

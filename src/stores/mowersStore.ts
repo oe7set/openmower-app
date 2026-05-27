@@ -4,7 +4,7 @@ import {hostFromMqttUrl, TeleopSocket} from '@/lib/teleopSocket';
 import {generateId} from '@/utils/area-utils';
 import {immerable} from 'immer';
 import mqtt, {MqttClient} from 'mqtt';
-import {useMemo} from 'react';
+import {useCallback, useMemo, useRef} from 'react';
 import {create, useStore} from 'zustand';
 import {immer} from 'zustand/middleware/immer';
 import {useConfigStore} from './configStore';
@@ -82,7 +82,7 @@ export type ExpectedTopic = (typeof EXPECTED_TOPICS)[number]['topic'];
 // comfortable headroom. Only applied to topics with `live: true`.
 const STALE_THRESHOLD_MS = 10_000;
 
-class Mower {
+export class Mower {
   [immerable] = true;
 
   readonly id: string;
@@ -166,12 +166,52 @@ interface MowersStore {
   // Components that need to re-render when topic ages cross thresholds
   // subscribe to this value via useConnectionDiagnostic.
   lastSeenTick: number;
+  // Bumped only when loadMowers() rebuilds the mower list. Selectors that
+  // need a stable view of the *list* of mowers (count, ids) subscribe to
+  // this instead of `mowers` directly, since immer rewrites `state.mowers`
+  // on every per-mower mutation.
+  mowersListVersion: number;
   loadMowers: () => void;
 }
 
-// Singleton interval handle so loadMowers() never spawns more than one
-// liveness ticker even if the user reloads config while the app is open.
-let liveTickHandle: ReturnType<typeof setInterval> | null = null;
+// Singleton interval handle for the liveness ticker. Stored on globalThis so
+// it survives Turbopack/HMR module reloads in dev — otherwise the previous
+// interval keeps firing forever (incrementing lastSeenTick and waking every
+// useConnectionDiagnostic consumer) while the new module starts with a null
+// handle and can't clear it. Production never re-evaluates this module so the
+// indirection is harmless there.
+const liveTickKey = '__openmowerLiveTickHandle';
+type GlobalWithTick = typeof globalThis & {[liveTickKey]?: ReturnType<typeof setInterval> | null};
+const getLiveTickHandle = () => (globalThis as GlobalWithTick)[liveTickKey] ?? null;
+const setLiveTickHandle = (h: ReturnType<typeof setInterval> | null) => {
+  (globalThis as GlobalWithTick)[liveTickKey] = h;
+};
+
+// Returns true when the currently loaded Mower instances already match the
+// desired config set on identity-relevant fields (id, broker URL, prefix,
+// camera endpoints). loadMowers() short-circuits in that case to avoid a
+// teardown+resubscribe storm under React 19 Strict Mode and Next.js HMR
+// double-invocations, which were freezing the dev server after a couple of
+// route changes.
+const sameMowers = (loaded: readonly Mower[], desired: readonly MowerConfig[]): boolean => {
+  if (loaded.length !== desired.length) return false;
+  for (let i = 0; i < loaded.length; i++) {
+    const a = loaded[i];
+    const b = desired[i];
+    if (
+      a.id !== b.id ||
+      a.mqttUrl !== b.mqtt_ws_url ||
+      a.mqttPrefix !== b.mqtt_prefix ||
+      a.name !== b.name ||
+      a.description !== b.description ||
+      a.cameraUrl !== (b.camera_url ?? '').trim() ||
+      a.whepUrl !== (b.whep_url ?? '').trim()
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
 
 export const useMowersStore = create<MowersStore>()(
   immer((set, get) => ({
@@ -179,17 +219,26 @@ export const useMowersStore = create<MowersStore>()(
     mqttStatuses: {},
     selected: 0,
     lastSeenTick: 0,
+    mowersListVersion: 0,
     loadMowers: () => {
+      const desired = useConfigStore.getState().config.mowers;
+      if (sameMowers(get().mowers, desired)) {
+        return;
+      }
       for (const oldMower of get().mowers) {
+        // Strip listeners before end() so any in-flight 'message' callback
+        // can't run against a torn-down store mid-cleanup.
+        oldMower.mqttClient.removeAllListeners();
         oldMower.mqttClient.end();
       }
-      if (liveTickHandle) {
-        clearInterval(liveTickHandle);
-        liveTickHandle = null;
+      const existingTick = getLiveTickHandle();
+      if (existingTick) {
+        clearInterval(existingTick);
+        setLiveTickHandle(null);
       }
 
       const mowers: Mower[] = [];
-      const mowerConfigs = useConfigStore.getState().config.mowers;
+      const mowerConfigs = desired;
       const urls = [...new Set(mowerConfigs.map((config) => config.mqtt_ws_url))];
       for (const url of urls) {
         const urlObj = new URL(url);
@@ -456,15 +505,21 @@ export const useMowersStore = create<MowersStore>()(
           }
         });
       }
-      set({mowers, selected: 0});
+      set((state) => {
+        state.mowers = mowers;
+        state.selected = 0;
+        state.mowersListVersion++;
+      });
       // 2s tick — coarse enough to avoid render churn, fine enough that the
       // banner reacts within ~12s of a backend going silent.
       if (mowers.length > 0) {
-        liveTickHandle = setInterval(() => {
-          set((state) => {
-            state.lastSeenTick++;
-          });
-        }, 2000);
+        setLiveTickHandle(
+          setInterval(() => {
+            set((state) => {
+              state.lastSeenTick++;
+            });
+          }, 2000),
+        );
       }
     },
   })),
@@ -490,17 +545,30 @@ export interface ConnectionDiagnostic {
 // reference on every call, which makes useSyncExternalStore see "changed
 // snapshot" forever and crash with "Maximum update depth exceeded".
 export function useConnectionDiagnostic(): ConnectionDiagnostic {
-  const mower = useMowersStore((s) => s.mowers[s.selected]);
-  const mqttStatus = useMowersStore((s) => (mower ? s.mqttStatuses[mower.id] : undefined));
-  // Tick is consumed only to force a re-evaluation every 2s so stale-topic
-  // detection doesn't freeze. The numeric value itself feeds into the deps
-  // array below and re-triggers the memo.
+  // Subscribe only to scalar slices that change rarely. The Mower object
+  // itself is rewritten by immer on every MQTT message (every state mutation
+  // produces a new reference), so subscribing to `s.mowers[s.selected]`
+  // would re-render every consumer at MQTT frequency (10+ Hz combined).
+  const mowerId = useMowersStore((s) => s.mowers[s.selected]?.id);
+  const mqttStatus = useMowersStore((s) => (mowerId ? s.mqttStatuses[mowerId] : undefined));
+  // The 2s tick is the resolution the diagnostic actually cares about.
   const tick = useMowersStore((s) => s.lastSeenTick);
-  // Snapshot the lastSeen map by reference — the immer middleware swaps it on
-  // every mutation, so referential equality is the right invalidation signal.
-  const lastSeen = mower?.lastSeen;
 
   return useMemo<ConnectionDiagnostic>(() => {
+    if (!mowerId) {
+      return {
+        status: 'no-mower',
+        mqttStatus,
+        mqttUrl: '',
+        mqttPrefix: '',
+        missingTopics: [],
+        staleTopics: [],
+      };
+    }
+    // Read the live mower lazily so we always see the latest lastSeen / urls
+    // without subscribing to per-message updates.
+    const live = useMowersStore.getState();
+    const mower = live.mowers[live.selected];
     if (!mower) {
       return {
         status: 'no-mower',
@@ -515,7 +583,7 @@ export function useConnectionDiagnostic(): ConnectionDiagnostic {
     const missing: ExpectedTopic[] = [];
     const stale: {topic: ExpectedTopic; ageMs: number}[] = [];
     for (const spec of EXPECTED_TOPICS) {
-      const seen = lastSeen?.[spec.topic];
+      const seen = mower.lastSeen[spec.topic];
       if (seen === undefined) {
         missing.push(spec.topic);
       } else if (spec.live && now - seen > STALE_THRESHOLD_MS) {
@@ -539,9 +607,11 @@ export function useConnectionDiagnostic(): ConnectionDiagnostic {
       missingTopics: missing,
       staleTopics: stale,
     };
-    // tick is intentionally a dependency so we re-evaluate stale-thresholds.
+    // `tick` is the trigger that re-evaluates lastSeen ages every 2s; it
+    // isn't read inside the memo body but its identity change is the whole
+    // point of the dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mower, lastSeen, mqttStatus, tick]);
+  }, [mowerId, mqttStatus, tick]);
 }
 
 const convertLegacyMap = (legacy: LegacyMapData) => ({
@@ -585,15 +655,38 @@ const convertLegacyDockingStation = (docking_pose: LegacyMapData['docking_pose']
   heading: docking_pose.heading!,
 });
 
+// Bumped only when `loadMowers()` rebuilds the mower set. Consumers of the
+// full `mowers` array (`useMowers`, dashboard counts, onboarding dialog) key
+// off this so they DON'T re-render at MQTT frequency — immer rewrites
+// `state.mowers` on every robot_state message, but the actual list of Mower
+// instances is identity-stable between loadMowers() calls.
+const selectMowersVersion = (s: MowersStore) => s.mowersListVersion;
+
 export const useMowers = () => {
-  // FIXME - this is a hack to get the mowers from the store
-  const mowers = useMowersStore((s) => s.mowers);
-  return mowers;
+  const version = useMowersStore(selectMowersVersion);
+  // useMemo keeps the returned array reference stable across MQTT-driven
+  // re-renders of the parent — `getState().mowers` IS a fresh ref each time
+  // immer mutates a Mower, but the Mower instances inside are the same
+  // objects we created in loadMowers(). Snapshotting once per version keeps
+  // any `.map(m => …)` work in consumers cheap.
+  // `version` is the trigger that re-snapshots the array when loadMowers()
+  // rebuilds the mower set; it is not read inside the memo body.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => useMowersStore.getState().mowers.slice(), [version]);
 };
 
 const identity = <T>(arg: T): T => arg;
 
+// Hand zustand a stable outer selector keyed once per component, so the
+// useSyncExternalStore subscription is bound a single time. The user-supplied
+// selector is read from a ref each render — that keeps closure variables fresh
+// without re-binding the subscription. With high-frequency MQTT updates the
+// previous "fresh inline arrow on every render" pattern caused excessive
+// snapshot reads and re-renders that compounded across route changes.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useSelectedMower<StateSlice>(selector: (state?: Mower) => StateSlice = identity as any) {
-  return useStore(useMowersStore, (s) => selector(s.mowers[s.selected]));
+  const selectorRef = useRef(selector);
+  selectorRef.current = selector;
+  const stable = useCallback((s: MowersStore) => selectorRef.current(s.mowers[s.selected]), []);
+  return useStore(useMowersStore, stable);
 }

@@ -41,20 +41,26 @@ interface MowerMarkerProps {
 }
 
 export default function MowerMarker({datum, isDocked}: MowerMarkerProps) {
-  const pose = useSelectedMower((s) => s?.state.pose);
+  // Scalar selectors so the marker only re-renders when the displayed pose
+  // changes — `state.pose` is a fresh reference on every robot_state message.
+  const x = useSelectedMower((s) => s?.state.pose.x);
+  const y = useSelectedMower((s) => s?.state.pose.y);
+  const heading = useSelectedMower((s) => s?.state.pose.heading ?? 0);
+  const posAccuracy = useSelectedMower((s) => s?.state.pose.pos_accuracy);
+  const hasPose = useSelectedMower((s) => Boolean(s?.state.pose));
   const theme = useTheme();
 
   const position = useMemo(() => {
-    if (!pose) return null;
-    return {x: pose.x, y: pose.y};
-  }, [pose]);
+    if (x === undefined || y === undefined) return null;
+    return {x, y};
+  }, [x, y]);
 
-  if (!position || !pose || isDocked) return null;
+  if (!position || !hasPose || isDocked) return null;
 
-  const markerColor = pose.pos_accuracy === 0 ? theme.palette.error.main : theme.palette.primary.main;
+  const markerColor = posAccuracy === 0 ? theme.palette.error.main : theme.palette.primary.main;
 
   return (
-    <MapMarker position={position} heading={pose.heading} sizeM={MOWER_LENGTH_M} datum={datum} className="mower-marker">
+    <MapMarker position={position} heading={heading} sizeM={MOWER_LENGTH_M} datum={datum} className="mower-marker">
       {(sizePx) => (
         <svg width={sizePx} height={sizePx} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
           <MowerArrow fill={markerColor} />
