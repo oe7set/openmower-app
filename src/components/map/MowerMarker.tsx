@@ -56,7 +56,7 @@ export default function MowerMarker({datum}: MowerMarkerProps) {
 
   if (!position || !hasPose) return null;
 
-  const hasAccuracy = posAccuracy !== undefined && posAccuracy > 0;
+  const hasAccuracy = posAccuracy != null && posAccuracy > 0;
   const markerColor = hasAccuracy ? theme.palette.primary.main : theme.palette.error.main;
   // pos_accuracy is the radius (1-sigma) in meters; MapMarker's sizeM is the
   // bounding diameter, so multiply by 2.

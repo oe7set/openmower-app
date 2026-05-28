@@ -18,7 +18,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import {useMemo, useState} from 'react';
+import {useMemo, useState, useSyncExternalStore} from 'react';
 
 // First-run helper. Triggered when no mowers are configured. Walks the user
 // through host entry, a quick MQTT-WebSocket reachability test, and produces
@@ -28,6 +28,13 @@ import {useMemo, useState} from 'react';
 
 const SKIP_KEY = 'openmower_onboarding_skipped';
 const STEPS = ['Mower host', 'Test connection', 'Create config.json'];
+
+// useSyncExternalStore-based "is hydrated" gate. The subscribe callback never
+// fires (the value never changes after mount), but React still flips between
+// the server and client snapshots, which is exactly what we want.
+const noopSubscribe = () => () => {};
+const getTrue = () => true;
+const getFalse = () => false;
 
 type TestState = 'idle' | 'pending' | 'success' | 'error';
 
@@ -45,8 +52,17 @@ export default function OnboardingDialog() {
   const [host, setHost] = useState('openmower.local');
   const [testState, setTestState] = useState<TestState>('idle');
   const [testError, setTestError] = useState<string | null>(null);
+  // Defer the open decision until after hydration. SSR renders with an empty
+  // mowers array (the store is only populated client-side by ConfigInitializer)
+  // — without this gate the Dialog mounts open=true in the SSR HTML, then MUI's
+  // open→close animation can leave the modal in a stuck state where the
+  // backdrop is invisible but still captures pointer events.
+  // useSyncExternalStore returns getServerSnapshot during SSR/initial hydrate
+  // and getSnapshot after the first commit, giving us a clean false→true flip
+  // without a setState-in-effect.
+  const hydrated = useSyncExternalStore(noopSubscribe, getTrue, getFalse);
 
-  const open = !skippedByUser && mowers.length === 0;
+  const open = hydrated && !skippedByUser && mowers.length === 0;
 
   const wsUrl = useMemo(() => {
     const trimmed = host.trim();

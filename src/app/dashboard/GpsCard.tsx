@@ -32,7 +32,7 @@ export default function GpsCard() {
   const theme = useTheme();
   const gps = useSelectedMower((s) => s?.state.gps_percentage ?? 0);
   const posAccuracy = useSelectedMower((s) => s?.state.pose.pos_accuracy);
-  const headingAccuracy = useSelectedMower((s) => s?.state.pose.heading_accuracy ?? 0);
+  const headingAccuracy = useSelectedMower((s) => s?.state.pose.heading_accuracy);
   const headingValid = useSelectedMower((s) => s?.state.pose.heading_valid ?? false);
   const fixType = useSelectedMower((s) => s?.state.gps_fix_type);
   const sats = useSelectedMower((s) => s?.state.gps_satellite_count);
@@ -91,7 +91,7 @@ export default function GpsCard() {
               fontWeight="600"
               color={headingValid ? 'text.primary' : 'text.secondary'}
             >
-              {headingValid ? `${headingAccuracy.toFixed(1)}°` : 'invalid'}
+              {headingValid && headingAccuracy != null ? `${headingAccuracy.toFixed(1)}°` : '—'}
             </Typography>
           </Box>
         </Box>

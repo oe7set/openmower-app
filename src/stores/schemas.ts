@@ -59,12 +59,17 @@ export const stateSchema = z.object({
   gps_percentage: gpsPercentage,
   is_charging: looseBoolean,
   pose: z.object({
-    heading: z.number(),
-    heading_accuracy: z.number(),
+    // Pose fields can be null on the wire when GPS just (re)started:
+    // xbot_positioning publishes NaN/Inf which nlohmann::json serialises as
+    // JSON null. x/y/heading are coerced to 0 because the marker/telemetry
+    // surfaces want a concrete number. The accuracy fields stay nullable so
+    // the UI can show "—" instead of a misleading "0.0 m" reading.
+    heading: z.number().nullable().transform((v) => v ?? 0),
+    heading_accuracy: z.number().nullable(),
     heading_valid: looseBoolean,
-    pos_accuracy: z.number(),
-    x: z.number(),
-    y: z.number(),
+    pos_accuracy: z.number().nullable(),
+    x: z.number().nullable().transform((v) => v ?? 0),
+    y: z.number().nullable().transform((v) => v ?? 0),
   }),
   // Backend R9a — extended GPS + WLAN telemetry. All optional so the schema
   // continues to parse on older xbot_monitoring builds that don't publish

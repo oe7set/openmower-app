@@ -22,8 +22,8 @@ export function fmtMeters(m?: number): string {
 // reported accuracy (Float ~1.5 m, 3D ~30 m, …). 999 is reserved for
 // "no GPS data at all" (cold start before any fix). Keep the field
 // visible at all times so the user can watch quality drift in real time.
-export function fmtAccuracy(m?: number): string {
-  if (m === undefined) return '—';
+export function fmtAccuracy(m?: number | null): string {
+  if (m === undefined || m === null) return '—';
   if (m >= 100) return 'no GPS';
   if (m <= 0) return '—';
   return m < 1 ? `${(m * 100).toFixed(1)} cm` : `${m.toFixed(2)} m`;
