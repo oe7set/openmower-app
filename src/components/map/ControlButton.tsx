@@ -2,11 +2,15 @@ import type {ButtonProps} from '@mui/material/Button';
 import {useTheme} from '@mui/material/styles';
 import type {ControlPosition} from 'maplibre-gl';
 import {useRControl} from 'maplibre-react-components';
+import type {ComponentType} from 'react';
 import {createPortal} from 'react-dom';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyIcon = ComponentType<any>;
 
 interface ControlButtonProps extends ButtonProps {
   position: ControlPosition;
-  icon: React.ElementType;
+  icon: AnyIcon;
   active?: boolean;
   spaced?: boolean;
 }

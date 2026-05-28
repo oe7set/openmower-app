@@ -1,11 +1,14 @@
 import {ListItemIcon, ListItemText, Menu, MenuItem, Radio} from '@mui/material';
 import {GlobeIcon, LayersIcon, MapIcon, SatelliteIcon, SquareIcon} from 'lucide-react';
 import {useRControl} from 'maplibre-react-components';
-import {useState} from 'react';
+import {useState, type ComponentType} from 'react';
 import {createPortal} from 'react-dom';
 import {useUiStore, type MapStyle} from '@/stores/uiStore';
 
-const OPTIONS: {value: MapStyle; label: string; icon: React.ElementType}[] = [
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyIcon = ComponentType<any>;
+
+const OPTIONS: {value: MapStyle; label: string; icon: AnyIcon}[] = [
   {value: 'plain', label: 'Plain', icon: SquareIcon},
   {value: 'satellite', label: 'Satellite', icon: SatelliteIcon},
   {value: 'osm', label: 'OpenStreetMap', icon: MapIcon},

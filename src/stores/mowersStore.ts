@@ -525,7 +525,11 @@ export const useMowersStore = create<MowersStore>()(
         });
       }
       set((state) => {
-        state.mowers = mowers;
+        // Mower has [immerable]=true, but immer's strict WritableDraft types
+        // recurse into mqtt.Client.options and trip on `readonly` fields deep
+        // in @types/node's http typings. The class itself is treated as
+        // opaque by immer at runtime, so the cast is safe.
+        state.mowers = mowers as unknown as typeof state.mowers;
         state.selected = 0;
         state.mowersListVersion++;
       });
