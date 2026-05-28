@@ -501,6 +501,53 @@
       }
     },
     {
+      "name": "imu.calibrate_level",
+      "summary": "Treat the mower's current pose as level: derive the IMU mounting roll/pitch and gyro-bias from a 2 s sample window and persist them under ll.services.imu.* via meta.config.set's atomic write pipeline.",
+      "description": "The mower must be on flat ground and motionless. The RPC averages ~200 samples of /ll/imu/data_raw, rejects the call (ERROR_INTERNAL with a 'MOWER_NOT_STILL: …' message and JSON payload) when the per-axis stddev exceeds the still-mower threshold, and otherwise writes the new offsets to the user YAML and pushes them into ros::param so the orientation filter picks them up at its next 1 Hz reload tick.",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "The newly persisted offsets plus the statistics from the recording window.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "mounting_roll_offset_rad",
+            "mounting_pitch_offset_rad",
+            "gyro_bias",
+            "samples_count",
+            "accel_stddev",
+            "gyro_stddev"
+          ],
+          "properties": {
+            "mounting_roll_offset_rad": {"type": "number"},
+            "mounting_pitch_offset_rad": {"type": "number"},
+            "gyro_bias": {
+              "type": "object",
+              "required": ["x", "y", "z"],
+              "properties": {
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "z": {"type": "number"}
+              }
+            },
+            "samples_count": {"type": "integer"},
+            "accel_stddev": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {"type": "number"}
+            },
+            "gyro_stddev": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "events.list",
       "summary": "List recent lifecycle events from the mower's notification ring buffer.",
       "paramStructure": "by-name",

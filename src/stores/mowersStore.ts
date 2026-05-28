@@ -2,6 +2,7 @@ import type {MowerConfig} from '@/components/types';
 import {OpenMowerRpc} from '@/lib/rpc';
 import {hostFromMqttUrl, TeleopSocket} from '@/lib/teleopSocket';
 import {generateId} from '@/utils/area-utils';
+import {BSON} from 'bson';
 import {immerable} from 'immer';
 import mqtt, {MqttClient} from 'mqtt';
 import {useCallback, useMemo, useRef} from 'react';
@@ -17,6 +18,7 @@ import {
   coveragePathSchema,
   eventSchema,
   eventsSnapshotSchema,
+  imuSampleSchema,
   LegacyArea,
   LegacyMapData,
   legacyMapSchema,
@@ -45,6 +47,7 @@ import {
 import {useDatumCacheStore} from './datumCacheStore';
 import {useNotificationsStore} from './notificationsStore';
 import {pushSensorValue, seedAllSensorHistory} from './sensorsStore';
+import {pushImuSample} from './imuStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
 
@@ -298,6 +301,7 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'events/json');
             client.subscribe(clientMower.prefix + 'events/stream');
             client.subscribe(clientMower.prefix + 'rpc/response');
+            client.subscribe(clientMower.prefix + 'imu/stream');
           }
           // The map/json topic doesn't carry the GPS datum (mower_map_service
           // omits it), so pull it from the live ROS-param-backed config. We
@@ -492,6 +496,21 @@ export const useMowersStore = create<MowersStore>()(
                 useNotificationsStore.getState().onStream(mowers[idx].id, parsed);
               } catch (e) {
                 console.warn('[mowersStore] events/stream parse failed:', e);
+              }
+            } else if (partialTopic === 'imu/stream') {
+              // BSON {d: {ax, ay, az, gx, gy, gz, qw, qx, qy, qz, ts_ms}} from
+              // xbot_monitoring's imu_data_callback. The decoder copies into a
+              // plain JS object via the toJSON-like envelope unwrap so the Zod
+              // schema sees ordinary numbers rather than BSON Long instances
+              // for ts_ms.
+              try {
+                const view = payload instanceof Uint8Array ? payload : new Uint8Array(payload);
+                const decoded = BSON.deserialize(view) as {d?: unknown};
+                const inner = decoded.d ?? decoded;
+                const sample = imuSampleSchema.parse(inner);
+                pushImuSample(mowers[idx].id, sample);
+              } catch (e) {
+                console.warn('[mowersStore] imu/stream decode failed:', e);
               }
             } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
               // sensors/<id>/data is plaintext: a stringified number for DOUBLE

@@ -3,6 +3,7 @@
 import ActionBar from './dashboard/ActionBar';
 import BatteryCard from './dashboard/BatteryCard';
 import GpsCard from './dashboard/GpsCard';
+import ImuCard from './dashboard/ImuCard';
 import PoseCard from './dashboard/PoseCard';
 import StateCard from './dashboard/StateCard';
 import WifiCard from './dashboard/WifiCard';
@@ -39,6 +40,7 @@ export default function Dashboard() {
           <GpsCard />
           <WifiCard />
           <PoseCard />
+          <ImuCard />
         </Box>
 
         <ActionBar />

@@ -43,6 +43,13 @@ next-env.d.ts
 # project-specific
 /config.json
 
+# Licensed 3D assets (kept out of git; supply at deploy time via volume mount
+# or `docker cp`. Falls back to a procedural model when missing.)
+/public/models/*.glb
+/public/models/*.gltf
+/public/models/*.bin
+/public/models/textures/
+
 # ai
 .claude
 CLAUDE.md

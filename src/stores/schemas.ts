@@ -306,6 +306,30 @@ export const eventSeverityRank: Record<EventSeverity, number> = {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// IMU stream
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// xbot_monitoring publishes /imu/data (Madgwick-fused) at 30 Hz on
+// `<prefix>imu/stream` as a BSON document {d: {ax,ay,az,gx,gy,gz,qw,qx,qy,qz,ts_ms}}.
+// The accelerations are m/s^2, angular velocities rad/s, the quaternion is
+// the body-to-world rotation in REP-103 conventions (x=fwd, y=left, z=up),
+// ts_ms is the message header stamp truncated to wall-clock milliseconds.
+export const imuSampleSchema = z.object({
+  ax: z.number(),
+  ay: z.number(),
+  az: z.number(),
+  gx: z.number(),
+  gy: z.number(),
+  gz: z.number(),
+  qw: z.number(),
+  qx: z.number(),
+  qy: z.number(),
+  qz: z.number(),
+  ts_ms: z.number(),
+});
+export type ImuSample = z.infer<typeof imuSampleSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Defaults
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
