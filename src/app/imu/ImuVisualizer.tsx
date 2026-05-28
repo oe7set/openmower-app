@@ -5,34 +5,32 @@ import {useLatestImu} from '@/stores/imuStore';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {Environment, Grid, OrbitControls, useGLTF} from '@react-three/drei';
 import {Canvas, useFrame} from '@react-three/fiber';
-import {Component, Suspense, useEffect, useRef, useState, type ReactNode} from 'react';
+import {Suspense, useEffect, useRef, useState} from 'react';
 import * as THREE from 'three';
 import ProceduralMower from './ProceduralMower';
 
 const MODEL_PATH = '/models/tango_e5.glb';
 
 // Bridge ROS REP-103 (X-forward, Y-left, Z-up) into three.js's default
-// (X-right, Y-up, -Z-forward). A single rotation that maps the body
-// frame onto the world frame: rotate -90° around X to lift Z to Y, then
-// rotate the result so that +X stays forward in the camera-friendly
-// scene. The actual orientation quaternion is applied to the body group
-// inside this adapter, so it stays expressed in the ROS frame.
+// (X-right, Y-up, -Z-forward). The orientation quaternion is applied to
+// the body group inside this adapter, so it stays expressed in the ROS
+// frame; the adapter alone takes care of the world-frame remap.
 function RosToThreeAdapter({children}: {children: React.ReactNode}) {
   return <group rotation={[-Math.PI / 2, 0, 0]}>{children}</group>;
 }
 
 interface MowerModelProps {
-  fallback: boolean;
+  glbAvailable: boolean;
 }
 
-function MowerModel({fallback}: MowerModelProps) {
+function MowerModel({glbAvailable}: MowerModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const targetRef = useRef(new THREE.Quaternion());
   const mowerId = useSelectedMower((s) => s?.id);
   const sample = useLatestImu(mowerId);
 
   // The IMU stream may briefly publish a non-unit quaternion (filter just
-  // started, or pre-bias-calibration). Renormalise here so we never feed
+  // started, or pre-bias-calibration). Renormalise so we never feed
   // three.js a degenerate rotation. Update happens in an effect because
   // mutating a ref during render is not allowed.
   useEffect(() => {
@@ -42,9 +40,9 @@ function MowerModel({fallback}: MowerModelProps) {
     targetRef.current.copy(q);
   }, [sample]);
 
-  // Slerp toward the latest sample at ~0.2 per frame. At 60 fps that
-  // converges in ~150 ms, which feels live without the visible 30 Hz step
-  // jitter that direct assignment would produce.
+  // Slerp toward the latest sample. At 60 fps and blend ~0.2/frame this
+  // converges in ~150 ms, which feels live without the visible 30 Hz
+  // step jitter that direct assignment would produce.
   useFrame((_, delta) => {
     const g = groupRef.current;
     if (!g) return;
@@ -54,53 +52,56 @@ function MowerModel({fallback}: MowerModelProps) {
 
   return (
     <RosToThreeAdapter>
-      <group ref={groupRef}>{fallback ? <ProceduralMower /> : <GltfMower />}</group>
+      <group ref={groupRef}>{glbAvailable ? <GltfMower /> : <ProceduralMower />}</group>
     </RosToThreeAdapter>
   );
 }
 
 function GltfMower() {
-  // useGLTF suspends until the file is loaded; an error boundary in
-  // ImuVisualizer falls back to ProceduralMower if the asset is absent.
   const {scene} = useGLTF(MODEL_PATH);
+  // GLTF meshes load with castShadow=false. Flip it once on import so the
+  // body of the mower drops a shadow onto the floor plane.
+  useEffect(() => {
+    scene.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) obj.castShadow = true;
+    });
+  }, [scene]);
   return <primitive object={scene} />;
 }
 
-useGLTF.preload?.(MODEL_PATH);
-
-// Boundary that downgrades to the procedural model on any GLB load error
-// (404, decode failure, missing draco decoder, …). Keeps the page usable
-// in CI and in forks without the licensed asset.
-interface ModelErrorBoundaryProps {
-  onError: () => void;
-  children: ReactNode;
-}
-
-class ModelErrorBoundary extends Component<ModelErrorBoundaryProps, {hasError: boolean}> {
-  constructor(props: ModelErrorBoundaryProps) {
-    super(props);
-    this.state = {hasError: false};
-  }
-  static getDerivedStateFromError() {
-    return {hasError: true};
-  }
-  componentDidCatch() {
-    this.props.onError();
-  }
-  render() {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
+// Probes the GLB asset with a HEAD request before mounting useGLTF.
+// Throwing inside useGLTF logs noisily in dev and leaves a stale entry
+// in the drei cache; checking first keeps the console clean and lets
+// the procedural fallback render immediately when the asset is absent
+// (CI, forks without the licensed model, fresh dev clones).
+function useGlbAvailability(): 'pending' | 'available' | 'missing' {
+  const [state, setState] = useState<'pending' | 'available' | 'missing'>('pending');
+  useEffect(() => {
+    let cancelled = false;
+    fetch(MODEL_PATH, {method: 'HEAD'})
+      .then((res) => {
+        if (cancelled) return;
+        setState(res.ok ? 'available' : 'missing');
+      })
+      .catch(() => {
+        if (!cancelled) setState('missing');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return state;
 }
 
 export default function ImuVisualizer() {
-  const [useFallback, setUseFallback] = useState(false);
+  const availability = useGlbAvailability();
+  const glbAvailable = availability === 'available';
 
   return (
     <Canvas
-      shadows
       camera={{position: [1.4, 1.0, 1.4], fov: 45, near: 0.05, far: 50}}
       style={{width: '100%', height: '100%'}}
+      shadows="soft"
     >
       <ambientLight intensity={0.4} />
       <directionalLight
@@ -109,18 +110,25 @@ export default function ImuVisualizer() {
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
+        shadow-camera-near={0.5}
+        shadow-camera-far={15}
+        shadow-camera-left={-3}
+        shadow-camera-right={3}
+        shadow-camera-top={3}
+        shadow-camera-bottom={-3}
       />
-      <Suspense fallback={<MowerModel fallback />}>
-        {useFallback ? (
-          <MowerModel fallback />
-        ) : (
-          <ModelErrorBoundary onError={() => setUseFallback(true)}>
-            <MowerModel fallback={false} />
-          </ModelErrorBoundary>
-        )}
+
+      <Suspense fallback={<MowerModel glbAvailable={false} />}>
+        <MowerModel glbAvailable={glbAvailable} />
       </Suspense>
 
-      {/* World-frame floor + grid — grid lives in three.js Y-up space. */}
+      {/* Receives the model's drop shadow on the world-frame floor. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+        <planeGeometry args={[10, 10]} />
+        <shadowMaterial opacity={0.25} />
+      </mesh>
+
+      {/* World-frame floor grid lives in three.js Y-up space. */}
       <Grid
         position={[0, 0, 0]}
         args={[10, 10]}
