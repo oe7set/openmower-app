@@ -45,6 +45,15 @@ export function quaternionToThree({qw, qx, qy, qz}: Quaternion): THREE.Quaternio
   return new THREE.Quaternion(qx, qy, qz, qw);
 }
 
+// Same conversion as quaternionToThree but writes into an existing
+// THREE.Quaternion instead of allocating. Used by the 60 fps render loop on
+// the IMU page, where a fresh `new THREE.Quaternion()` per frame caused GC
+// churn that lengthened frames the longer the page stayed open. Returns the
+// same instance for chaining (e.g. `.normalize()`).
+export function writeQuaternionToThree({qw, qx, qy, qz}: Quaternion, out: THREE.Quaternion): THREE.Quaternion {
+  return out.set(qx, qy, qz, qw);
+}
+
 export function radToDeg(rad: number): number {
   return (rad * 180) / Math.PI;
 }

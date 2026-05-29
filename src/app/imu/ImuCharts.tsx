@@ -1,9 +1,10 @@
 'use client';
 
-import {useImuHistory} from '@/stores/imuStore';
+import {getImuHistory} from '@/stores/imuStore';
+import type {ImuSample} from '@/stores/schemas';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {Box, Typography, useTheme} from '@mui/material';
-import {useMemo} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
 
 interface SeriesPoint {
@@ -13,20 +14,50 @@ interface SeriesPoint {
   z: number;
 }
 
-// We rebuild a small chart-friendly array from the IMU ring buffer on each
-// render. The ring is bounded (600 samples) and re-renders are gated by
-// the imuStore subscription, so the cost stays in the single-digit ms
-// range.
-function buildSeries(history: ReturnType<typeof useImuHistory>, kind: 'accel' | 'gyro'): SeriesPoint[] {
-  const out: SeriesPoint[] = new Array(history.length);
-  for (let i = 0; i < history.length; i++) {
+// Charts refresh at this cadence instead of subscribing to every ~11 Hz IMU
+// publish. Two 600-point recharts LineCharts reconciling at 11 Hz saturated
+// the main thread and starved App Router route transitions (leaving /imu took
+// minutes). 4 Hz is plenty for a live trend and frees the thread between ticks.
+const CHART_REFRESH_MS = 250;
+
+// recharts can't resolve more points than the chart is pixels wide, and the
+// reconcile cost scales with point count. Downsample the 600-sample ring to
+// at most this many points (stride sampling preserves the trend shape).
+const MAX_POINTS = 150;
+
+// Build a chart-friendly, downsampled array from the IMU ring buffer.
+function buildSeries(history: readonly ImuSample[], kind: 'accel' | 'gyro'): SeriesPoint[] {
+  const stride = Math.max(1, Math.ceil(history.length / MAX_POINTS));
+  const out: SeriesPoint[] = [];
+  for (let i = 0; i < history.length; i += stride) {
     const s = history[i];
-    out[i] =
+    out.push(
       kind === 'accel'
         ? {ts: s.ts_ms, x: s.ax, y: s.ay, z: s.az}
-        : {ts: s.ts_ms, x: s.gx, y: s.gy, z: s.gz};
+        : {ts: s.ts_ms, x: s.gx, y: s.gy, z: s.gz},
+    );
   }
   return out;
+}
+
+// Poll the IMU history at CHART_REFRESH_MS rather than re-rendering on every
+// store publish. Returns the latest ring snapshot; the caller memoizes the
+// derived series off it.
+function useThrottledImuHistory(mowerId: string | undefined): readonly ImuSample[] {
+  const [history, setHistory] = useState<readonly ImuSample[]>(() => getImuHistory(mowerId));
+  useEffect(() => {
+    // Tick immediately (covers a mowerId switch) then on the refresh cadence.
+    // Wrapped in the interval-arming so we don't setState directly in the
+    // effect body. The leading 0ms timer fires after paint, not synchronously.
+    const tick = () => setHistory(getImuHistory(mowerId));
+    const lead = setTimeout(tick, 0);
+    const id = setInterval(tick, CHART_REFRESH_MS);
+    return () => {
+      clearTimeout(lead);
+      clearInterval(id);
+    };
+  }, [mowerId]);
+  return history;
 }
 
 interface ChartPanelProps {
@@ -114,7 +145,7 @@ function ChartPanel({title, unit, data, yDomain = ['auto', 'auto']}: ChartPanelP
 
 export default function ImuCharts() {
   const mowerId = useSelectedMower((s) => s?.id);
-  const history = useImuHistory(mowerId);
+  const history = useThrottledImuHistory(mowerId);
 
   const accel = useMemo(() => buildSeries(history, 'accel'), [history]);
   const gyro = useMemo(() => buildSeries(history, 'gyro'), [history]);

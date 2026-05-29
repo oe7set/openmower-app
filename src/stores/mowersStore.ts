@@ -76,6 +76,7 @@ export const EXPECTED_TOPICS: readonly TopicSpec[] = [
   {topic: 'map/json', live: false},
   {topic: 'actions/json', live: false},
   {topic: 'sensor_infos/json', live: false},
+  {topic: 'imu/stream', live: true},
 ] as const;
 
 export type ExpectedTopic = (typeof EXPECTED_TOPICS)[number]['topic'];
@@ -84,6 +85,16 @@ export type ExpectedTopic = (typeof EXPECTED_TOPICS)[number]['topic'];
 // matches the typical 1Hz publish cadence of the live ROS bridges with
 // comfortable headroom. Only applied to topics with `live: true`.
 const STALE_THRESHOLD_MS = 10_000;
+
+// High-frequency streaming topics (imu/stream at 30 Hz, sensors/<id>/data)
+// would otherwise run the immer lastSeen producer — and the resulting
+// app-wide useMowersStore notification cycle — 30x/s, competing with App
+// Router route transitions and churning every selector. We throttle their
+// liveness stamp to ~1 Hz, which is far inside STALE_THRESHOLD_MS so the
+// debug table / connection banner stay accurate. The first sample is always
+// stamped immediately so liveness still shows up instantly.
+const LASTSEEN_THROTTLE_MS = 1000;
+const lastSeenStamp = new Map<string, number>(); // key: `${mowerId}|${seenKey}`
 
 export class Mower {
   [immerable] = true;
@@ -339,9 +350,19 @@ export const useMowersStore = create<MowersStore>()(
             // Always stamp lastSeen first — if zod parsing throws below we
             // still know the mower is publishing on this topic, just with a
             // schema mismatch (which is a backend bug, not a connectivity one).
-            set((state) => {
-              state.mowers[idx].lastSeen[seenKey] = Date.now();
-            });
+            // For high-frequency streaming topics the stamp is throttled to
+            // ~1 Hz (see LASTSEEN_THROTTLE_MS) so the immer producer + app-wide
+            // notification doesn't run 30x/s; the first stamp is immediate.
+            const now = Date.now();
+            const isStreaming = seenKey === 'imu/stream' || seenKey === 'sensors/data';
+            const gateKey = `${mowers[idx].id}|${seenKey}`;
+            const prevStamp = lastSeenStamp.get(gateKey);
+            if (!isStreaming || prevStamp === undefined || now - prevStamp >= LASTSEEN_THROTTLE_MS) {
+              lastSeenStamp.set(gateKey, now);
+              set((state) => {
+                state.mowers[idx].lastSeen[seenKey] = now;
+              });
+            }
             // Wrap every schema-parse in try/catch. A single mismatch (older
             // backends that don't match the current schemas — e.g. numeric
             // booleans where a `bool` is expected) used to throw out of the
