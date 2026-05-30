@@ -35,14 +35,13 @@ const liveHistory: Record<string, ImuSample[]> = {};
 const lastImuPublish: Record<string, number> = {};
 
 interface ImuState {
-  // Keyed by mowerId.
+  // Keyed by mowerId. Only `latest` is published reactively (consumed by
+  // useLatestImu); chart history is polled non-reactively via getImuHistory.
   latest: Record<string, ImuSample>;
-  history: Record<string, ImuSample[]>;
 }
 
 export const useImuStore = create<ImuState>(() => ({
   latest: {},
-  history: {},
 }));
 
 export function pushImuSample(mowerId: string, sample: ImuSample): void {
@@ -58,12 +57,12 @@ export function pushImuSample(mowerId: string, sample: ImuSample): void {
   if (now - (lastImuPublish[mowerId] ?? 0) < IMU_PUBLISH_INTERVAL_MS) return;
   lastImuPublish[mowerId] = now;
 
-  // 3) Publish an immutable snapshot. history is sliced so charts get a fresh
-  //    ref (re-render) while the live ring keeps mutating; the slice still
-  //    carries the complete 600-sample window, so chart resolution is intact.
+  // 3) Publish only `latest` (a tiny object) for the useLatestImu readouts.
+  //    We no longer slice/publish the 600-sample history here — the charts
+  //    poll the live ring via getImuHistory on their own 4 Hz cadence, so the
+  //    old 11 Hz slice was pure allocation churn that nothing consumed.
   useImuStore.setState((state) => ({
     latest: {...state.latest, [mowerId]: sample},
-    history: {...state.history, [mowerId]: ring.slice()},
   }));
 }
 
@@ -79,12 +78,10 @@ export function clearImuStream(mowerId: string): void {
   delete liveHistory[mowerId];
   delete lastImuPublish[mowerId];
   useImuStore.setState((state) => {
-    if (!(mowerId in state.latest) && !(mowerId in state.history)) return state;
+    if (!(mowerId in state.latest)) return state;
     const latest = {...state.latest};
-    const history = {...state.history};
     delete latest[mowerId];
-    delete history[mowerId];
-    return {latest, history};
+    return {latest};
   });
 }
 
@@ -92,14 +89,11 @@ export function useLatestImu(mowerId: string | undefined): ImuSample | undefined
   return useImuStore((s) => (mowerId ? s.latest[mowerId] : undefined));
 }
 
-export function useImuHistory(mowerId: string | undefined): readonly ImuSample[] {
-  return useImuStore((s) => (mowerId ? s.history[mowerId] ?? EMPTY_HISTORY : EMPTY_HISTORY));
-}
-
 // Non-reactive history read for consumers that poll on their own cadence
-// (e.g. the charts, which refresh at ~4 Hz instead of subscribing to every
-// ~11 Hz publish — two 600-point recharts reconciles at 11 Hz saturated the
-// main thread and starved route transitions on /imu).
+// (the charts refresh at ~4 Hz). Returns a fresh slice of the live ring so
+// the caller's ref-equality memo recomputes; the slice cost lands on the
+// chart's 4 Hz poll rather than the 11 Hz publish path.
 export function getImuHistory(mowerId: string | undefined): readonly ImuSample[] {
-  return mowerId ? useImuStore.getState().history[mowerId] ?? EMPTY_HISTORY : EMPTY_HISTORY;
+  const ring = mowerId ? liveHistory[mowerId] : undefined;
+  return ring ? ring.slice() : EMPTY_HISTORY;
 }

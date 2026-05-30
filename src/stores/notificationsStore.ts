@@ -116,6 +116,17 @@ export const useNotificationsStore = create<NotificationsStore>()(
 
 // Helpers --------------------------------------------------------------------
 
+// Drop a mower's entire event slot. Called from mowersStore.loadMowers when a
+// mower is removed from config so its (up to MAX_PER_MOWER) events don't leak.
+export function pruneNotifications(mowerId: string): void {
+  useNotificationsStore.setState((state) => {
+    if (!state.byMower[mowerId]) return state;
+    const byMower = {...state.byMower};
+    delete byMower[mowerId];
+    return {byMower};
+  });
+}
+
 function rpcForMower(mowerId: string) {
   const mower = useMowersStore.getState().mowers.find((m) => m.id === mowerId);
   return mower?.rpc;

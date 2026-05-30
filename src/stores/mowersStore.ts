@@ -45,9 +45,9 @@ import {
   type VersionInfo,
 } from './schemas';
 import {useDatumCacheStore} from './datumCacheStore';
-import {useNotificationsStore} from './notificationsStore';
-import {pushSensorValue, seedAllSensorHistory} from './sensorsStore';
-import {pushImuSample} from './imuStore';
+import {pruneNotifications, useNotificationsStore} from './notificationsStore';
+import {pruneSensorMower, pushSensorValue, seedAllSensorHistory} from './sensorsStore';
+import {clearImuStream, pushImuSample} from './imuStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
 
@@ -239,11 +239,25 @@ export const useMowersStore = create<MowersStore>()(
       if (sameMowers(get().mowers, desired)) {
         return;
       }
+      const desiredIds = new Set(desired.map((config) => config.id));
       for (const oldMower of get().mowers) {
         // Strip listeners before end() so any in-flight 'message' callback
         // can't run against a torn-down store mid-cleanup.
         oldMower.mqttClient.removeAllListeners();
         oldMower.mqttClient.end();
+        // Prune per-mower module state for mowers that no longer exist, so
+        // their IMU rings, event lists, sensor history and lastSeen stamps
+        // don't leak across config reloads. (Mowers that survive the reload
+        // keep their buffers — same id.)
+        if (!desiredIds.has(oldMower.id)) {
+          clearImuStream(oldMower.id);
+          pruneNotifications(oldMower.id);
+          pruneSensorMower(oldMower.id);
+          sensorHistorySeeded.delete(oldMower.id);
+          for (const key of lastSeenStamp.keys()) {
+            if (key.startsWith(oldMower.id + '|')) lastSeenStamp.delete(key);
+          }
+        }
       }
       const existingTick = getLiveTickHandle();
       if (existingTick) {

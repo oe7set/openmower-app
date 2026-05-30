@@ -132,6 +132,20 @@ export function seedAllSensorHistory(
   }
 }
 
+// Drop all values + history for a mower. Called from mowersStore.loadMowers
+// when a mower is removed from config so its per-sensor ring buffers (up to
+// RING_CAPACITY each) don't leak across reconfigurations.
+export function pruneSensorMower(mowerId: string): void {
+  useSensorsStore.setState((state) => {
+    if (!(mowerId in state.values) && !(mowerId in state.history)) return state;
+    const values = {...state.values};
+    const history = {...state.history};
+    delete values[mowerId];
+    delete history[mowerId];
+    return {values, history};
+  });
+}
+
 // Hook helpers — selectors keep re-renders narrow.
 export function useSensorValue(mowerId: string | undefined, sensorId: string): SensorSample | undefined {
   return useSensorsStore((s) => (mowerId ? s.values[mowerId]?.[sensorId] : undefined));

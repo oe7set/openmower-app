@@ -11,6 +11,16 @@ import ProceduralMower from './ProceduralMower';
 
 const MODEL_PATH = '/models/tango_e5.glb';
 
+// Start fetching/parsing the 13 MB GLB as soon as this module loads (during
+// the dynamic import of the visualizer) so the procedural→GLB swap is quick.
+useGLTF.preload(MODEL_PATH);
+
+// Below this angular distance (~0.5°) we treat the model as "arrived" at the
+// live orientation: snap to it and stop requesting frames. Live IMU noise sits
+// well under this, so a physically-still robot lets the demand loop go fully
+// idle (~0 rendered fps) instead of slerping toward jitter at 60 fps forever.
+const SETTLE_RAD = 0.0087;
+
 // Bridge ROS REP-103 (X-forward, Y-left, Z-up) into three.js's default
 // (X-right, Y-up, -Z-forward). The orientation quaternion is applied to
 // the body group inside this adapter, so it stays expressed in the ROS
@@ -55,19 +65,22 @@ function MowerModel({glbAvailable}: MowerModelProps) {
     if (sample) {
       writeQuaternionToThree(sample, targetRef.current).normalize();
     }
-    // Slerp toward the latest sample. At 60 fps and blend ~0.2/frame this
-    // converges in ~150 ms, which feels live without the visible 30 Hz
-    // step jitter that direct assignment would produce.
-    const blend = Math.min(1, delta * 12);
-    g.quaternion.slerp(targetRef.current, blend);
-    // In demand mode the loop only renders when invalidated. Keep requesting
-    // frames ONLY while the slerp is still converging, then let it go fully
-    // idle — the same pattern drei's OrbitControls uses for damping. Once
-    // idle, the main thread frees up and App Router's pending route
-    // transition can finally commit. (A previous version blindly invalidated
-    // ~30 Hz via setInterval, which kept the loop hot forever and starved
-    // the transition — that was the bug.)
-    if (g.quaternion.angleTo(targetRef.current) > 1e-4) invalidate();
+
+    const dist = g.quaternion.angleTo(targetRef.current);
+    // Within the deadband: snap to the target and request NO further frame.
+    // The demand loop then goes idle, freeing the main thread so App Router's
+    // pending route transition can commit. (A previous 1e-4 threshold sat
+    // below IMU noise, so the loop never idled and ran 60 fps forever — that
+    // re-introduced the navigation slowdown.)
+    if (dist < SETTLE_RAD) {
+      g.quaternion.copy(targetRef.current);
+      return;
+    }
+    // Still converging: slerp one step (blend ~0.2/frame ≈ 150 ms to arrive)
+    // and keep the loop alive until we drop into the deadband above, then it
+    // stops. Same self-terminating pattern drei's OrbitControls uses.
+    g.quaternion.slerp(targetRef.current, Math.min(1, delta * 12));
+    invalidate();
   });
 
   // Wake the demand-mode loop only when a NEW IMU sample is actually
@@ -101,11 +114,19 @@ interface GltfMowerProps {
 
 function GltfMower({onReady}: GltfMowerProps) {
   const {scene} = useGLTF(MODEL_PATH);
-  // GLTF meshes load with castShadow=false. Flip it once on import so the
-  // body of the mower drops a shadow onto the floor plane.
+  // GLTF meshes load with castShadow=false and single-sided materials. Flip
+  // both once on import: castShadow so the body drops a shadow onto the floor,
+  // and side=DoubleSide so faces with open/inverted normals don't vanish when
+  // the camera looks at the model from below.
   useEffect(() => {
     scene.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) obj.castShadow = true;
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of materials) {
+        if (m) m.side = THREE.DoubleSide;
+      }
     });
     onReady();
   }, [scene, onReady]);
@@ -151,18 +172,24 @@ export default function ImuVisualizer() {
       <Canvas
         camera={{position: [1.4, 1.0, 1.4], fov: 45, near: 0.1, far: 20}}
         style={{width: '100%', height: '100%'}}
-        shadows="soft"
+        // PCFSoftShadowMap (with the 512² maps below) is far cheaper than the
+        // VSM-based shadows="soft" and visually indistinguishable for a small
+        // hero model. The shadow map only re-renders on rendered frames, which
+        // the demand loop now makes rare.
+        shadows={{type: THREE.PCFSoftShadowMap}}
+        // Cap the pixel ratio: the r3f default [1, 2] renders 4× the pixels on
+        // a 2× display. 1.5 halves worst-case fragment work with no visible
+        // quality loss for this scene.
+        dpr={[1, 1.5]}
         // demand: render only when invalidate() is called (per IMU sample,
-        // during slerp/damping). A continuous frameloop="always" loop never
-        // yielded an idle frame, so App Router's concurrent route transition
-        // could never commit — clicking a sidebar item did nothing while on
-        // this page. See MowerModel for the invalidate wiring.
+        // during slerp). The deadband in MowerModel's useFrame lets the loop
+        // go fully idle when the robot is still, so the main thread frees up
+        // and App Router route transitions commit promptly.
         frameloop="demand"
-        // flat: THREE.NoToneMapping instead of the default ACESFilmic curve,
-        // which compressed midtones and made the model look dark regardless
-        // of light intensity. With NoToneMapping the lights below are the
-        // sole brightness control.
-        flat
+        // ACESFilmic tone mapping for a natural look with clip-safe highlights;
+        // exposure nudged up so the scene isn't dark. Lights below compensate
+        // for the curve's highlight compression.
+        gl={{toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15}}
         eventSource={containerRef as React.RefObject<HTMLElement>}
         eventPrefix="offset"
       >
@@ -171,17 +198,17 @@ export default function ImuVisualizer() {
             preset> here: it fetches an HDR from raw.githack.com, which an
             offline robot can't reach, and the extra Suspense source used to
             re-mount OrbitControls and trap pointer captures. These three
-            intensities are the brightness knobs (tone mapping is off, see the
-            Canvas `flat` prop) — keep directional modest or the metallic
-            blade disc starts to specular-clip. */}
-        <ambientLight intensity={0.5} />
-        <hemisphereLight args={['#a8c8ff', '#5a4f3a', 0.5]} />
+            intensities are the brightness knobs (paired with the Canvas
+            toneMappingExposure above) — keep directional modest or the
+            metallic blade disc starts to specular-clip. */}
+        <ambientLight intensity={0.6} />
+        <hemisphereLight args={['#a8c8ff', '#5a4f3a', 0.6]} />
         <directionalLight
           position={[3, 5, 2]}
-          intensity={0.95}
+          intensity={1.1}
           castShadow
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
+          shadow-mapSize-width={512}
+          shadow-mapSize-height={512}
           shadow-camera-near={0.5}
           shadow-camera-far={15}
           shadow-camera-left={-3}
