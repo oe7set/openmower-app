@@ -3,13 +3,28 @@
 import {writeQuaternionToThree} from '@/lib/quaternion';
 import {getLiveImuSample, useImuStore} from '@/stores/imuStore';
 import {useSelectedMower} from '@/stores/mowersStore';
+import {ToneMappingMode, useUiStore} from '@/stores/uiStore';
 import {Grid, OrbitControls, useGLTF} from '@react-three/drei';
 import {Canvas, useFrame, useThree} from '@react-three/fiber';
 import {Suspense, useEffect, useRef, useState} from 'react';
 import * as THREE from 'three';
+import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js';
+import LookControls from './LookControls';
 import ProceduralMower from './ProceduralMower';
 
 const MODEL_PATH = '/models/tango_e5.glb';
+
+// Persisted string union (uiStore) → three.js tone-mapping constant. Kept here
+// so the persisted value never depends on three's numeric enum values.
+export const TONE_MAPPING: Record<ToneMappingMode, THREE.ToneMapping> = {
+  neutral: THREE.NeutralToneMapping,
+  agx: THREE.AgXToneMapping,
+  aces: THREE.ACESFilmicToneMapping,
+  reinhard: THREE.ReinhardToneMapping,
+  cineon: THREE.CineonToneMapping,
+  linear: THREE.LinearToneMapping,
+  none: THREE.NoToneMapping,
+};
 
 // Start fetching/parsing the 13 MB GLB as soon as this module loads (during
 // the dynamic import of the visualizer) so the procedural→GLB swap is quick.
@@ -114,23 +129,101 @@ interface GltfMowerProps {
 
 function GltfMower({onReady}: GltfMowerProps) {
   const {scene} = useGLTF(MODEL_PATH);
-  // GLTF meshes load with castShadow=false and single-sided materials. Flip
-  // both once on import: castShadow so the body drops a shadow onto the floor,
-  // and side=DoubleSide so faces with open/inverted normals don't vanish when
-  // the camera looks at the model from below.
+  // GLTF meshes load with castShadow=false and single-sided materials. Fix a
+  // few things once on import:
+  //  - castShadow so the body drops a shadow onto the floor;
+  //  - side=DoubleSide so faces with open/inverted normals don't vanish when
+  //    the camera looks at the model from below;
+  //  - frustumCulled=false + a recomputed bounding sphere so individual meshes
+  //    don't pop out of existence as the model rotates. Exported GLBs often
+  //    carry too-tight/incorrect bounds; for a single always-framed hero model
+  //    culling buys nothing, so disabling it is the guaranteed fix (and the
+  //    recompute repairs the underlying bounds as a belt-and-suspenders);
+  //  - opaque-pass normalization for materials wrongly flagged transparent
+  //    (see the per-material comment below).
   useEffect(() => {
     scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      mesh.geometry?.computeBoundingSphere();
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of materials) {
-        if (m) m.side = THREE.DoubleSide;
+        if (!m) continue;
+        m.side = THREE.DoubleSide;
+        // Pipeline artifact: the 3dsMax→FBX→Blender→glTF export marks several
+        // solid body panels (plastic_1, green_mat, plastic_top) alphaMode=BLEND
+        // because their diffuse PNGs carry a fully-opaque alpha channel. BLEND
+        // puts them in three's transparent pass — depthWrite off, per-object
+        // back-to-front centroid sort — so on rotation panels sort wrong:
+        // background shows through, panels look see-through, textures drop out.
+        // The mower has no translucent parts, so push any material that is
+        // flagged transparent yet fully opaque (opacity ≥ 1) back to the opaque
+        // pass. Materials with genuine opacity < 1 are left untouched.
+        if (m.transparent && (m.opacity ?? 1) >= 1) {
+          m.transparent = false;
+          m.depthWrite = true;
+          m.alphaTest = 0;
+          m.needsUpdate = true; // flipping transparent changes blend/program state
+        }
       }
     });
     onReady();
   }, [scene, onReady]);
   return <primitive object={scene} />;
+}
+
+// Procedural image-based lighting. The Tango GLB uses real PBR materials with
+// metallic/glossy panels; the metallic component reflects the environment, so
+// without an env map those panels resolve to near-black (the procedural
+// fallback uses flat diffuse colors and doesn't need this). RoomEnvironment is
+// bundled with three and the PMREM is generated in-process, so this honours the
+// offline-robot constraint that ruled out drei's <Environment preset> (which
+// fetches an HDR over the network). Assigned to scene.environment so every PBR
+// material picks it up automatically. Strength (environmentIntensity) is owned
+// by ToneController below so the look-controls slider is the single source.
+function LocalEnvironment() {
+  // Pull the renderer/scene through r3f's non-reactive get() accessor inside the
+  // effect rather than mutating selector return values directly — assigning to
+  // scene.environment on a useThree() result trips the react-hooks immutability
+  // rule. get() is stable, so the effect runs once.
+  const get = useThree((s) => s.get);
+  useEffect(() => {
+    const {gl, scene, invalidate} = get();
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const envScene = new RoomEnvironment();
+    const envMap = pmrem.fromScene(envScene, 0.04).texture;
+    scene.environment = envMap;
+    // frameloop="demand": render once now that the lighting changed.
+    invalidate();
+    return () => {
+      scene.environment = null;
+      envMap.dispose();
+      pmrem.dispose();
+    };
+  }, [get]);
+  return null;
+}
+
+// Applies the persisted look settings (tone mapping, exposure, IBL intensity)
+// to the live renderer/scene and re-renders on change. Switching gl.toneMapping
+// is part of three's program cache key, so setProgram auto-recompiles materials
+// on the next render — we only need to set the value and invalidate(). Exposure
+// and environmentIntensity are uniforms and apply instantly.
+function ToneController() {
+  const get = useThree((s) => s.get);
+  const toneMapping = useUiStore((s) => s.imuToneMapping);
+  const exposure = useUiStore((s) => s.imuExposure);
+  const envIntensity = useUiStore((s) => s.imuEnvIntensity);
+  useEffect(() => {
+    const {gl, scene, invalidate} = get();
+    gl.toneMapping = TONE_MAPPING[toneMapping] ?? THREE.NeutralToneMapping;
+    gl.toneMappingExposure = exposure;
+    scene.environmentIntensity = envIntensity;
+    invalidate();
+  }, [get, toneMapping, exposure, envIntensity]);
+  return null;
 }
 
 // Probes the GLB asset with a HEAD request before mounting useGLTF.
@@ -186,26 +279,26 @@ export default function ImuVisualizer() {
         // go fully idle when the robot is still, so the main thread frees up
         // and App Router route transitions commit promptly.
         frameloop="demand"
-        // ACESFilmic tone mapping for a natural look with clip-safe highlights;
-        // exposure nudged up so the scene isn't dark. Lights below compensate
-        // for the curve's highlight compression.
-        gl={{toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15}}
+        // Tone mapping / exposure are applied at runtime by ToneController from
+        // the persisted look settings (default: Khronos PBR Neutral @ 1.0), so
+        // they're intentionally not set here.
         eventSource={containerRef as React.RefObject<HTMLElement>}
         eventPrefix="offset"
       >
-        {/* Hemi + ambient + directional gives PBR materials enough volume
-            without an HDRI. We deliberately do NOT use drei's <Environment
-            preset> here: it fetches an HDR from raw.githack.com, which an
-            offline robot can't reach, and the extra Suspense source used to
-            re-mount OrbitControls and trap pointer captures. These three
-            intensities are the brightness knobs (paired with the Canvas
-            toneMappingExposure above) — keep directional modest or the
-            metallic blade disc starts to specular-clip. */}
-        <ambientLight intensity={0.6} />
-        <hemisphereLight args={['#a8c8ff', '#5a4f3a', 0.6]} />
+        {/* Lighting is IBL (LocalEnvironment: a bundled RoomEnvironment PMREM,
+            no network fetch — drei's <Environment preset> was rejected because
+            it fetches an HDR an offline robot can't reach) plus a single
+            directional key light. The earlier ambient + hemisphere fills were
+            removed: stacked on top of IBL they flattened contrast and
+            over-brightened the model. IBL strength (environmentIntensity),
+            exposure and the tone mapper are the brightness knobs and live in the
+            look-controls overlay; keep the directional modest or the metallic
+            blade disc starts to specular-clip. */}
+        <LocalEnvironment />
+        <ToneController />
         <directionalLight
           position={[3, 5, 2]}
-          intensity={1.1}
+          intensity={0.9}
           castShadow
           shadow-mapSize-width={512}
           shadow-mapSize-height={512}
@@ -253,6 +346,11 @@ export default function ImuVisualizer() {
           target={[0, 0.15, 0]}
         />
       </Canvas>
+
+      {/* Look-controls overlay: hidden behind a toggle button, lives inside the
+          same container as the Canvas so r3f's eventSource/pointer-capture
+          scoping is unaffected. Writes to uiStore; ToneController applies it. */}
+      <LookControls />
     </div>
   );
 }

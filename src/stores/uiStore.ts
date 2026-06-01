@@ -10,6 +10,10 @@ export type Density = 'comfortable' | 'compact';
 export type RadiusMode = 'sharp' | 'standard' | 'soft';
 export type MotionMode = 'system' | 'full' | 'off';
 export type PageHeaderStyle = 'hero' | 'flat' | 'minimal';
+// Tone-mapping modes exposed in the IMU 3D viewer's look controls. Stored as a
+// string union (not the numeric THREE.*ToneMapping enums) so the persisted
+// value stays stable across three.js upgrades; the viewer maps it to the enum.
+export type ToneMappingMode = 'neutral' | 'agx' | 'aces' | 'reinhard' | 'cineon' | 'linear' | 'none';
 
 // Default ordered list of bottom-bar items by path. Mirrors the items
 // originally tagged isPrimary in createNavigationItems(), with the two
@@ -64,6 +68,14 @@ interface UiStore {
   /** Per-mower override colour, keyed by mower id. Falls back to a hashed default. */
   mowerColors: Record<string, string>;
 
+  // IMU 3D-viewer look controls (the page-local overlay on /imu). Persisted so
+  // a chosen look survives reloads, but kept out of the Appearance page / reset.
+  imuToneMapping: ToneMappingMode;
+  /** Renderer toneMappingExposure for the IMU viewer. */
+  imuExposure: number;
+  /** scene.environmentIntensity (IBL strength) for the IMU viewer. */
+  imuEnvIntensity: number;
+
   setThemeMode: (mode: ThemeMode) => void;
   setUnits: (units: Units) => void;
   setMapStyle: (style: MapStyle) => void;
@@ -88,7 +100,23 @@ interface UiStore {
   clearMowerColor: (id: string) => void;
   /** Restore appearance defaults; theme/units/map overlays are left alone. */
   resetAppearance: () => void;
+
+  setImuToneMapping: (v: ToneMappingMode) => void;
+  setImuExposure: (v: number) => void;
+  setImuEnvIntensity: (v: number) => void;
+  /** Restore the IMU viewer's look controls to their shipped defaults. */
+  resetImuLook: () => void;
 }
+
+// Shipped defaults for the IMU viewer look. Neutral (Khronos PBR Neutral) is the
+// product-viewer tone map: preserves material base colours with minimal hue
+// shift. Exposure 1.0 / IBL 0.5 give a natural, non-washed-out result with the
+// single directional key light.
+const IMU_LOOK_DEFAULTS = {
+  imuToneMapping: 'neutral' as ToneMappingMode,
+  imuExposure: 1.0,
+  imuEnvIntensity: 0.5,
+};
 
 const APPEARANCE_DEFAULTS = {
   drawerAnchor: 'left' as DrawerAnchor,
@@ -117,6 +145,7 @@ export const useUiStore = create<UiStore>()(
       showPatternPreview: false,
       teleopSpeedCap: 0.6,
       ...APPEARANCE_DEFAULTS,
+      ...IMU_LOOK_DEFAULTS,
       setThemeMode: (themeMode) => set({themeMode}),
       setUnits: (units) => set({units}),
       setMapStyle: (mapStyle) => set({mapStyle}),
@@ -147,6 +176,10 @@ export const useUiStore = create<UiStore>()(
           return {mowerColors: next};
         }),
       resetAppearance: () => set({...APPEARANCE_DEFAULTS}),
+      setImuToneMapping: (imuToneMapping) => set({imuToneMapping}),
+      setImuExposure: (imuExposure) => set({imuExposure: Math.max(0.2, Math.min(2, imuExposure))}),
+      setImuEnvIntensity: (imuEnvIntensity) => set({imuEnvIntensity: Math.max(0, Math.min(2, imuEnvIntensity))}),
+      resetImuLook: () => set({...IMU_LOOK_DEFAULTS}),
     }),
     {
       name: 'openmower-ui',
