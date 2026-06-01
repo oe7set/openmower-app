@@ -109,7 +109,7 @@
               "speed_mps": {"type": "number", "description": "Mowing speed in m/s. Omit to use the global FTC planner speed."},
               "pattern": {
                 "type": "string",
-                "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert"],
+                "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert", "grid", "honeycomb", "octagram"],
                 "description": "Coverage fill pattern. Omit to use the global default pattern."
               },
               "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."},
@@ -931,7 +931,7 @@
               "speed_mps": {"type": "number", "description": "Mowing speed in m/s. Omit to use the global FTC planner speed."},
               "pattern": {
                 "type": "string",
-                "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert"],
+                "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert", "grid", "honeycomb", "octagram"],
                 "description": "Coverage fill pattern. Omit to use the global default pattern."
               },
               "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."},

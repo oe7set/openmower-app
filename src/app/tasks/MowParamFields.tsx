@@ -108,7 +108,7 @@ export default function MowOverridesFields({
       <OverrideRow
         label="Outline passes"
         on={outlineOn}
-        onToggle={(v) => onChange({outline_count: v ? 1 : undefined})}
+        onToggle={(v) => onChange({outline_count: v ? 3 : undefined})}
       >
         <Box sx={{display: 'flex', alignItems: 'center', gap: 2, px: 1}}>
           <Slider
@@ -117,12 +117,12 @@ export default function MowOverridesFields({
             max={10}
             step={1}
             marks
-            value={overrides?.outline_count ?? 1}
+            value={overrides?.outline_count ?? 3}
             onChange={(_, v) => onChange({outline_count: v as number})}
             valueLabelDisplay="auto"
           />
           <Typography variant="body2" sx={{minWidth: 56}}>
-            {overrides?.outline_count ?? 1}×
+            {overrides?.outline_count ?? 3}×
           </Typography>
         </Box>
       </OverrideRow>

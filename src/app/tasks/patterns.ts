@@ -6,6 +6,9 @@
 //   concentric_lines  -> FILL_CONCENTRIC (1)        follows the area outline
 //   concentric_circle -> FILL_CONCENTRIC_CIRCLE (2) Archimedean spiral
 //   hilbert           -> FILL_HILBERT (3)
+//   grid              -> FILL_GRID (4)              rectilinear, two perpendicular passes
+//   honeycomb         -> FILL_HONEYCOMB (5)
+//   octagram          -> FILL_OCTAGRAM (6)          octagram spiral
 import type {MowPattern} from './ScheduleEditor';
 
 export interface PatternOption {
@@ -27,6 +30,13 @@ export const MOW_PATTERNS: ReadonlyArray<PatternOption> = [
     description: 'Archimedean spiral, independent of the area shape.',
   },
   {value: 'hilbert', label: 'Hilbert', description: 'Space-filling Hilbert curve.'},
+  {value: 'grid', label: 'Grid (cross-cut)', description: 'Rectilinear in two perpendicular passes. Robust, even coverage.'},
+  {value: 'honeycomb', label: 'Honeycomb', description: 'Hexagonal cells. Robust, even coverage.'},
+  {
+    value: 'octagram',
+    label: 'Octagram spiral',
+    description: 'Star-shaped spiral, independent of the area shape.',
+  },
 ];
 
 const LABEL_BY_VALUE = new Map<MowPattern, string>(MOW_PATTERNS.map((p) => [p.value, p.label]));

@@ -37,7 +37,14 @@ import MowOverridesFields from './MowParamFields';
 import TimeWindowFields from './TimeWindowFields';
 
 export type ScheduleMode = 'time_area' | 'time_window' | 'continuous';
-export type MowPattern = 'linear' | 'concentric_lines' | 'concentric_circle' | 'hilbert';
+export type MowPattern =
+  | 'linear'
+  | 'concentric_lines'
+  | 'concentric_circle'
+  | 'hilbert'
+  | 'grid'
+  | 'honeycomb'
+  | 'octagram';
 
 export interface ScheduleWindow {
   start?: string;
