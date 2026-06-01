@@ -12,8 +12,10 @@ import {
   SkipNext as SkipIcon,
   Stop as StopIcon,
   StopCircle as StopCircleIcon,
+  Tune as TuneIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import StartMowingDialog from '@/app/tasks/StartMowingDialog';
 import {
   Box,
   Button,
@@ -29,6 +31,9 @@ import {ReactNode, useState} from 'react';
 // MQTT action id, so it bypasses the actions/json gating and is always shown
 // outside of the emergency state.
 const RPC_RETURN_HOME = '__rpc__/mower.return_home';
+// Synthetic id for the "Mow with params" button, which opens the parametrized
+// start dialog instead of sending an action directly.
+const START_WITH_PARAMS = '__dialog__/start_mowing';
 
 type ButtonSpec = {
   id: string;
@@ -43,6 +48,7 @@ type ButtonSpec = {
 
 const ALL_BUTTONS: readonly ButtonSpec[] = [
   {id: MOWER_ACTIONS.startMowing, label: 'Start', icon: <PlayIcon />, color: 'primary', variant: 'contained', gated: true},
+  {id: START_WITH_PARAMS, label: 'Mow with params', icon: <TuneIcon />, color: 'primary', variant: 'outlined', gated: false},
   {id: MOWER_ACTIONS.continueMowing, label: 'Continue', icon: <PlayIcon />, color: 'primary', variant: 'outlined', gated: true},
   {id: MOWER_ACTIONS.pause, label: 'Pause', icon: <PauseIcon />, color: 'warning', variant: 'outlined', gated: true},
   {id: MOWER_ACTIONS.skipArea, label: 'Skip area', icon: <SkipIcon />, color: 'info', variant: 'outlined', gated: true},
@@ -80,6 +86,7 @@ export default function QuickActions({variant = 'card', onActionDispatched}: Qui
   const emergency = useSelectedMower(selectEmergency);
   const [pending, setPending] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
 
   const sendAction = async (label: string, actionId: string) => {
     const mower = useMowersStore.getState().mowers[useMowersStore.getState().selected];
@@ -124,6 +131,10 @@ export default function QuickActions({variant = 'card', onActionDispatched}: Qui
     }
     if (button.id === RPC_RETURN_HOME) {
       sendReturnHome();
+      return;
+    }
+    if (button.id === START_WITH_PARAMS) {
+      setStartOpen(true);
       return;
     }
     sendAction(button.label, button.id);
@@ -181,6 +192,7 @@ export default function QuickActions({variant = 'card', onActionDispatched}: Qui
           </Button>
         ))}
       </Box>
+      {startOpen && <StartMowingDialog onClose={() => setStartOpen(false)} />}
       {resetOpen && (
         <Dialog open onClose={() => setResetOpen(false)}>
           <DialogTitle>Reset emergency stop?</DialogTitle>

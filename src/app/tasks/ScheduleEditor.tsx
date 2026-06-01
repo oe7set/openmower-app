@@ -12,12 +12,10 @@ import {
   DialogTitle,
   Divider,
   FormControl,
-  FormControlLabel,
   InputLabel,
   ListItemText,
   MenuItem,
   Select,
-  Slider,
   Switch,
   TextField,
   ToggleButton,
@@ -35,7 +33,8 @@ import {
   type RruleParts,
   type Weekday,
 } from './rrule';
-import {MOW_PATTERNS} from './patterns';
+import MowOverridesFields from './MowParamFields';
+import TimeWindowFields from './TimeWindowFields';
 
 export type ScheduleMode = 'time_area' | 'time_window' | 'continuous';
 export type MowPattern = 'linear' | 'concentric_lines' | 'concentric_circle' | 'hilbert';
@@ -51,6 +50,7 @@ export interface ScheduleOverrides {
   speed_mps?: number;
   pattern?: MowPattern;
   angle_deg?: number;
+  outline_count?: number;
 }
 
 export interface Schedule {
@@ -71,7 +71,16 @@ export interface Schedule {
   // Read-only fields populated by the scheduler.
   next_run?: string | null;
   last_fired_at?: string | null;
-  last_skip_reason?: 'no_state' | 'emergency' | 'not_idle' | 'charging' | 'rain' | 'blocked' | 'holiday' | null;
+  last_skip_reason?:
+    | 'no_state'
+    | 'emergency'
+    | 'not_idle'
+    | 'charging'
+    | 'rain'
+    | 'blocked'
+    | 'holiday'
+    | 'block_window'
+    | null;
   last_skip_at?: string | null;
 }
 
@@ -114,11 +123,6 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
       mowingIndex: mowIdx,
       label: a.properties.name?.trim() || `Mowing area ${mowIdx}`,
     }));
-
-  // Override toggles: a per-appointment value or "use default" (field omitted).
-  const speedOn = draft.overrides?.speed_mps != null;
-  const patternOn = draft.overrides?.pattern != null;
-  const angleOn = draft.overrides?.angle_deg != null;
 
   const windowDays = draft.window?.days ?? [];
 
@@ -189,11 +193,23 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
 
           {/* Window — time_window only */}
           {mode === 'time_window' && (
-            <WindowSection
-              window={draft.window ?? {}}
-              days={windowDays}
-              onChange={updateWindow}
-            />
+            <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+              <TimeWindowFields
+                start={draft.window?.start}
+                end={draft.window?.end}
+                days={windowDays}
+                onChange={updateWindow}
+              />
+              <TextField
+                label="Wait between areas (min)"
+                type="number"
+                size="small"
+                value={draft.window?.area_wait_minutes ?? 0}
+                onChange={(e) => updateWindow({area_wait_minutes: clamp(parseInt(e.target.value, 10), 0, 1440)})}
+                inputProps={{min: 0}}
+                sx={{width: 220}}
+              />
+            </Box>
           )}
 
           {/* Areas — not used by continuous (mows all active) */}
@@ -248,66 +264,7 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
             <Typography variant="subtitle2" sx={{mb: 1}}>
               Mowing parameters
             </Typography>
-            <OverrideRow
-              label="Speed"
-              on={speedOn}
-              onToggle={(v) => updateOverrides({speed_mps: v ? 0.3 : undefined})}
-            >
-              <Box sx={{display: 'flex', alignItems: 'center', gap: 2, px: 1}}>
-                <Slider
-                  size="small"
-                  min={0.1}
-                  max={1.0}
-                  step={0.05}
-                  value={draft.overrides?.speed_mps ?? 0.3}
-                  onChange={(_, v) => updateOverrides({speed_mps: v as number})}
-                  valueLabelDisplay="auto"
-                />
-                <Typography variant="body2" sx={{minWidth: 56}}>
-                  {(draft.overrides?.speed_mps ?? 0.3).toFixed(2)} m/s
-                </Typography>
-              </Box>
-            </OverrideRow>
-
-            <OverrideRow
-              label="Pattern"
-              on={patternOn}
-              onToggle={(v) => updateOverrides({pattern: v ? 'linear' : undefined})}
-            >
-              <FormControl size="small" fullWidth>
-                <Select
-                  value={draft.overrides?.pattern ?? 'linear'}
-                  onChange={(e) => updateOverrides({pattern: e.target.value as MowPattern})}
-                >
-                  {MOW_PATTERNS.map((p) => (
-                    <MenuItem key={p.value} value={p.value}>
-                      {p.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </OverrideRow>
-
-            <OverrideRow
-              label="Angle"
-              on={angleOn}
-              onToggle={(v) => updateOverrides({angle_deg: v ? 0 : undefined})}
-            >
-              <Box sx={{display: 'flex', alignItems: 'center', gap: 2, px: 1}}>
-                <Slider
-                  size="small"
-                  min={0}
-                  max={179}
-                  step={1}
-                  value={draft.overrides?.angle_deg ?? 0}
-                  onChange={(_, v) => updateOverrides({angle_deg: v as number})}
-                  valueLabelDisplay="auto"
-                />
-                <Typography variant="body2" sx={{minWidth: 56}}>
-                  {Math.round(draft.overrides?.angle_deg ?? 0)}°
-                </Typography>
-              </Box>
-            </OverrideRow>
+            <MowOverridesFields overrides={draft.overrides} onChange={updateOverrides} />
           </Box>
 
           <Divider />
@@ -490,98 +447,6 @@ function RecurrenceBuilder({
             onChange={(e) => setParts({...parts, until: e.target.value})}
             InputLabelProps={{shrink: true}}
           />
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-// ── Time-window section ─────────────────────────────────────────────────────
-
-function WindowSection({
-  window,
-  days,
-  onChange,
-}: {
-  window: ScheduleWindow;
-  days: string[];
-  onChange: (patch: Partial<ScheduleWindow>) => void;
-}) {
-  return (
-    <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-      <Box sx={{display: 'flex', gap: 2}}>
-        <TextField
-          label="Start"
-          type="time"
-          value={window.start ?? '08:00'}
-          onChange={(e) => onChange({start: e.target.value})}
-          InputLabelProps={{shrink: true}}
-          sx={{flex: 1}}
-        />
-        <TextField
-          label="End"
-          type="time"
-          value={window.end ?? '20:00'}
-          onChange={(e) => onChange({end: e.target.value})}
-          InputLabelProps={{shrink: true}}
-          sx={{flex: 1}}
-        />
-      </Box>
-      <Box>
-        <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
-          Active on
-        </Typography>
-        <ToggleButtonGroup
-          size="small"
-          value={days}
-          onChange={(_, v: string[]) => onChange({days: v})}
-          aria-label="Active days"
-        >
-          {WEEKDAYS.map((d) => (
-            <ToggleButton key={d.key} value={d.key}>
-              {d.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      </Box>
-      <TextField
-        label="Wait between areas (min)"
-        type="number"
-        size="small"
-        value={window.area_wait_minutes ?? 0}
-        onChange={(e) => onChange({area_wait_minutes: clamp(parseInt(e.target.value, 10), 0, 1440)})}
-        inputProps={{min: 0}}
-        sx={{width: 220}}
-      />
-    </Box>
-  );
-}
-
-// ── Override row (toggle + control) ─────────────────────────────────────────
-
-function OverrideRow({
-  label,
-  on,
-  onToggle,
-  children,
-}: {
-  label: string;
-  on: boolean;
-  onToggle: (on: boolean) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1}}>
-      <FormControlLabel
-        sx={{minWidth: 120, m: 0}}
-        control={<Switch size="small" checked={on} onChange={(e) => onToggle(e.target.checked)} />}
-        label={<Typography variant="body2">{label}</Typography>}
-      />
-      <Box sx={{flex: 1, opacity: on ? 1 : 0.4, pointerEvents: on ? 'auto' : 'none'}}>
-        {on ? children : (
-          <Typography variant="body2" color="text.secondary">
-            Use default
-          </Typography>
         )}
       </Box>
     </Box>

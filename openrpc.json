@@ -89,6 +89,52 @@
       }
     },
     {
+      "name": "mower.start_mowing",
+      "summary": "Start a manual (ad-hoc) mowing run over chosen areas with optional per-run parameter overrides. Dispatched through the scheduler, so it honours the same gating (must be idle, not in an active block window).",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "areas",
+          "description": "Zero-based indices into the mow-type areas, mowed in order. An empty list mows every active area.",
+          "required": true,
+          "schema": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+        },
+        {
+          "name": "overrides",
+          "description": "Per-run parameter overrides. Same shape as Schedule.overrides; an omitted field falls back to the mower's global default.",
+          "required": false,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "speed_mps": {"type": "number", "description": "Mowing speed in m/s. Omit to use the global FTC planner speed."},
+              "pattern": {
+                "type": "string",
+                "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert"],
+                "description": "Coverage fill pattern. Omit to use the global default pattern."
+              },
+              "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."},
+              "outline_count": {"type": "integer", "minimum": 0, "description": "Number of perimeter passes before the fill pattern. Omit to use the per-area/global default."}
+            }
+          }
+        },
+        {
+          "name": "duration_minutes",
+          "description": "Optional stop-at-time horizon in minutes. Omit or 0 for no time limit (run to natural completion).",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The dispatched run's correlation id. The call errors when the mower is not idle or an active block window is in effect.",
+        "schema": {
+          "type": "object",
+          "required": ["run_id"],
+          "properties": {"run_id": {"type": "string"}}
+        }
+      }
+    },
+    {
       "name": "meta.rpc.ping",
       "summary": "Ping the meta server.",
       "params": [],
@@ -342,6 +388,45 @@
         "name": "exceptions",
         "description": "The persisted exceptions configuration.",
         "schema": {"$ref": "#/components/schemas/MowingExceptions"}
+      }
+    },
+    {
+      "name": "exceptions.holidays",
+      "summary": "Resolve the public-holiday names for the configured country/region across a date range, so the calendar can label holiday days.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "from",
+          "description": "Inclusive range start, ISO 'YYYY-MM-DD'.",
+          "required": true,
+          "schema": {"type": "string"}
+        },
+        {
+          "name": "to",
+          "description": "Inclusive range end, ISO 'YYYY-MM-DD'.",
+          "required": true,
+          "schema": {"type": "string"}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Holidays within the range. Empty when no country is configured or the holidays database is unavailable on the mower.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "holidays": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["date", "name"],
+                "properties": {
+                  "date": {"type": "string", "description": "ISO 'YYYY-MM-DD'."},
+                  "name": {"type": "string", "description": "Localized holiday name from the holidays database."}
+                }
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -849,7 +934,8 @@
                 "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert"],
                 "description": "Coverage fill pattern. Omit to use the global default pattern."
               },
-              "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."}
+              "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."},
+              "outline_count": {"type": "integer", "minimum": 0, "description": "Number of perimeter (outline) passes mowed before the fill pattern. Omit to use the per-area/global default."}
             }
           },
           "pattern": {
@@ -871,7 +957,7 @@
           },
           "last_skip_reason": {
             "type": "string",
-            "enum": ["no_state", "emergency", "not_idle", "charging", "rain", "blocked", "holiday"],
+            "enum": ["no_state", "emergency", "not_idle", "charging", "rain", "blocked", "holiday", "block_window"],
             "description": "Read-only. Reason the most recent due occurrence was skipped. Omitted when no skip has been recorded."
           },
           "last_skip_at": {
@@ -902,7 +988,7 @@
       },
       "MowingExceptions": {
         "type": "object",
-        "description": "Days on which mowing is blocked: explicit blocking_days plus the public holidays of the configured country/region.",
+        "description": "When mowing is blocked: explicit blocking_days, the public holidays of the configured country/region, and recurring block_windows (time-of-day ranges).",
         "properties": {
           "country": {"type": "string", "description": "ISO country code for public-holiday lookup, e.g. 'DE'. Empty disables holiday blocking."},
           "subdiv": {"type": "string", "description": "Optional subdivision/region code, e.g. 'BY' for Bavaria. Empty for nationwide holidays."},
@@ -910,6 +996,27 @@
             "type": "array",
             "items": {"type": "string"},
             "description": "Manual blocking days as ISO 'YYYY-MM-DD'. Mowing is skipped on these dates regardless of schedules."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone the block_windows times are interpreted in (e.g. 'Europe/Vienna'). Defaults to 'UTC' on the server when missing."
+          },
+          "block_windows": {
+            "type": "array",
+            "description": "Recurring time-of-day windows during which mowing is blocked (hard stop: an active run is sent home and no new/automatic run starts while a window is active). E.g. nightly 20:00-08:00.",
+            "items": {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "start": {"type": "string", "description": "Window start, 'HH:MM' in the exceptions timezone."},
+                "end": {"type": "string", "description": "Window end, 'HH:MM'. An end <= start crosses midnight (e.g. 20:00-08:00)."},
+                "days": {
+                  "type": "array",
+                  "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                  "description": "Weekdays the window is active on. Empty or omitted = every day."
+                }
+              }
+            }
           }
         }
       }

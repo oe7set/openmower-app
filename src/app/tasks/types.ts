@@ -16,8 +16,31 @@ export interface ScheduleRun {
   reason?: string;
 }
 
+// A recurring time-of-day window. start/end are 'HH:MM'; an end <= start
+// crosses midnight (e.g. 20:00–08:00). Empty/omitted days = every day.
+export interface BlockWindow {
+  start: string;
+  end: string;
+  days?: string[];
+}
+
 export interface MowingExceptions {
   country?: string;
   subdiv?: string;
   blocking_days?: string[];
+  timezone?: string;
+  block_windows?: BlockWindow[];
+}
+
+// One public holiday resolved by the backend for the calendar range.
+export interface Holiday {
+  date: string; // ISO 'YYYY-MM-DD'
+  name: string;
+}
+
+// Calendar tint for a day: a manual/full-day block or a public holiday. The
+// optional label carries the holiday name for the tooltip.
+export interface BlockedDay {
+  reason: 'blocked' | 'holiday';
+  label?: string;
 }

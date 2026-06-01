@@ -4,7 +4,7 @@ import {alpha, Box, Chip, Tooltip, Typography, useTheme} from '@mui/material';
 import {Warning as WarningIcon, Block as BlockIcon} from '@mui/icons-material';
 import {format} from 'date-fns';
 import type {Schedule} from './ScheduleEditor';
-import type {ScheduleRun} from './types';
+import type {BlockedDay, ScheduleRun} from './types';
 
 export interface DayAppointment {
   schedule: Schedule;
@@ -18,7 +18,7 @@ interface DayCellProps {
   isToday: boolean;
   appointments: DayAppointment[];
   failures: ScheduleRun[];
-  blockedReason?: string; // 'blocked' | 'holiday' | undefined
+  blocked?: BlockedDay;
   onSelectSchedule: (s: Schedule) => void;
 }
 
@@ -30,11 +30,11 @@ export default function DayCell({
   isToday,
   appointments,
   failures,
-  blockedReason,
+  blocked,
   onSelectSchedule,
 }: DayCellProps) {
   const theme = useTheme();
-  const blocked = !!blockedReason;
+  const isBlocked = !!blocked;
   const visible = appointments.slice(0, MAX_VISIBLE);
   const overflow = appointments.length - visible.length;
 
@@ -48,7 +48,7 @@ export default function DayCell({
         flexDirection: 'column',
         gap: 0.25,
         border: `1px solid ${theme.palette.divider}`,
-        backgroundColor: blocked
+        backgroundColor: isBlocked
           ? alpha(theme.palette.warning.main, 0.12)
           : inMonth
             ? theme.palette.background.paper
@@ -77,8 +77,8 @@ export default function DayCell({
           </Typography>
         </Box>
         <Box sx={{display: 'flex', gap: 0.25}}>
-          {blocked && (
-            <Tooltip title={blockedReason === 'holiday' ? 'Public holiday' : 'Blocking day'}>
+          {isBlocked && (
+            <Tooltip title={blocked?.label ?? (blocked?.reason === 'holiday' ? 'Public holiday' : 'Blocking day')}>
               <BlockIcon sx={{fontSize: 14, color: theme.palette.warning.main}} />
             </Tooltip>
           )}

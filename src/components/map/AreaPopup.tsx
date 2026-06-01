@@ -4,10 +4,11 @@ import {useToast} from '@/hooks/useToast';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {area as turfArea} from '@turf/area';
 import type {Feature, Polygon} from 'geojson';
-import {PlayArrow as PlayIcon} from '@mui/icons-material';
+import {PlayArrow as PlayIcon, Tune as TuneIcon} from '@mui/icons-material';
 import {Box, Button, Paper, Typography, useTheme} from '@mui/material';
 import {useState} from 'react';
 import {MAP_OVERLAY_FLOATING} from './zIndex';
+import StartMowingDialog from '@/app/tasks/StartMowingDialog';
 
 interface AreaPopupProps {
   /** The selected polygon feature, or null when nothing is selected. */
@@ -22,6 +23,7 @@ export default function AreaPopup({area, mowingIndex, onClose}: AreaPopupProps) 
   const toast = useToast();
   const rpc = useSelectedMower((s) => s?.rpc);
   const [pending, setPending] = useState(false);
+  const [paramsOpen, setParamsOpen] = useState(false);
 
   if (!area) return null;
 
@@ -68,23 +70,44 @@ export default function AreaPopup({area, mowingIndex, onClose}: AreaPopupProps) 
       <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
         {props.type ?? 'area'} · {sizeM2} m²{props.active === false ? ' · inactive' : ''}
       </Typography>
-      <Box sx={{display: 'flex', gap: 1, justifyContent: 'flex-end'}}>
+      <Box sx={{display: 'flex', gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap'}}>
         <Button size="small" onClick={onClose}>
           Close
         </Button>
         {isMowing && mowingIndex >= 0 && (
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            startIcon={<PlayIcon />}
-            disabled={pending || !rpc}
-            onClick={startHere}
-          >
-            {pending ? '…' : 'Start here'}
-          </Button>
+          <>
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              startIcon={<TuneIcon />}
+              disabled={!rpc}
+              onClick={() => setParamsOpen(true)}
+            >
+              With params…
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              startIcon={<PlayIcon />}
+              disabled={pending || !rpc}
+              onClick={startHere}
+            >
+              {pending ? '…' : 'Start here'}
+            </Button>
+          </>
         )}
       </Box>
+      {paramsOpen && (
+        <StartMowingDialog
+          defaultAreaIndex={mowingIndex}
+          onClose={() => {
+            setParamsOpen(false);
+            onClose();
+          }}
+        />
+      )}
     </Paper>
   );
 }

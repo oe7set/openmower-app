@@ -11,6 +11,7 @@ import {
   CheckCircle as CheckIcon,
   Delete as DeleteIcon,
   History as HistoryIcon,
+  PlayArrow as PlayIcon,
   Schedule as ScheduleIcon,
   ViewList as ListIcon,
 } from '@mui/icons-material';
@@ -32,28 +33,16 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import ScheduleEditor, {type Schedule} from './ScheduleEditor';
 import CalendarView from './CalendarView';
 import ExceptionsManager from './ExceptionsManager';
 import RunHistoryDrawer from './RunHistoryDrawer';
+import StartMowingDialog from './StartMowingDialog';
 import {DEFAULT_RRULE_PARTS, describeRrule, partsToRrule} from './rrule';
-import type {MowingExceptions, ScheduleRun} from './types';
-
-// Resolve the browser's IANA zone (e.g. 'Europe/Vienna'). Falls back to UTC
-// on the rare engines that don't expose a name — the scheduler accepts that.
-// TODO: this hard-wires the schedule timezone to whatever zone the browser
-// happens to be in when a schedule is created. That is fine for the common
-// case (mower owner edits from home), but breaks for travelling owners and
-// for headless edits. Move the timezone to a per-mower config param or surface
-// a picker in the editor so the choice is explicit instead of implicit.
-function detectTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
+import {describeBlockWindow} from './blockWindows';
+import type {BlockedDay, Holiday, MowingExceptions, ScheduleRun} from './types';
+import {detectTimezone} from './timezone';
 
 function emptySchedule(): Schedule {
   return {
@@ -75,6 +64,7 @@ const SKIP_LABELS: Record<NonNullable<Schedule['last_skip_reason']>, string> = {
   rain: 'Skipped: rain detected',
   blocked: 'Skipped: blocking day',
   holiday: 'Skipped: public holiday',
+  block_window: 'Skipped: block window',
 };
 
 const MODE_LABELS: Record<NonNullable<Schedule['mode']>, string> = {
@@ -111,7 +101,13 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [editingExceptions, setEditingExceptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
   const [view, setView] = useState<ViewMode>('calendar');
+  // Public holidays resolved from the backend, keyed by ISO 'YYYY-MM-DD'. The
+  // calendar drives which years we fetch via onRangeChange; we keep a set of
+  // already-requested years so navigating months doesn't refetch endlessly.
+  const [holidays, setHolidays] = useState<Map<string, string>>(new Map());
+  const fetchedYears = useRef<Set<number>>(new Set());
 
   const refresh = useCallback(async () => {
     if (!rpc) return;
@@ -134,6 +130,10 @@ export default function TasksPage() {
       } catch {
         setExceptions({});
       }
+      // The configured country/region may have changed; drop the holiday cache
+      // so the calendar refetches names for the visible range.
+      fetchedYears.current = new Set();
+      setHolidays(new Map());
     } catch (e) {
       setError((e as Error).message);
       setSchedules([]);
@@ -145,6 +145,37 @@ export default function TasksPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Resolve public-holiday names for any year that becomes visible in the
+  // calendar. Best-effort: older scheduler builds without exceptions.holidays
+  // simply yield no names, and the calendar falls back to manual blocks only.
+  const loadHolidays = useCallback(
+    async (from: Date, to: Date) => {
+      if (!rpc || !exceptions.country) return;
+      const years: number[] = [];
+      for (let y = from.getFullYear(); y <= to.getFullYear(); y++) {
+        if (!fetchedYears.current.has(y)) years.push(y);
+      }
+      if (years.length === 0) return;
+      for (const y of years) fetchedYears.current.add(y);
+      try {
+        const result = (await rpc.exceptions.holidays({
+          from: `${years[0]}-01-01`,
+          to: `${years[years.length - 1]}-12-31`,
+        })) as unknown as {holidays?: Holiday[]};
+        const list = result?.holidays ?? [];
+        setHolidays((prev) => {
+          const next = new Map(prev);
+          for (const h of list) next.set(h.date, h.name);
+          return next;
+        });
+      } catch {
+        // Roll the years back so a later navigation can retry.
+        for (const y of years) fetchedYears.current.delete(y);
+      }
+    },
+    [rpc, exceptions.country],
+  );
 
   const handleSave = async (schedule: Schedule) => {
     if (!rpc) return;
@@ -184,7 +215,7 @@ export default function TasksPage() {
     if (!rpc) return;
     try {
       await rpc.exceptions.set({exceptions: e as never});
-      toast.success('Saved blocking days');
+      toast.success('Saved exceptions');
       setEditingExceptions(false);
       refresh();
     } catch (err) {
@@ -192,15 +223,37 @@ export default function TasksPage() {
     }
   };
 
-  // Manual blocking days for the calendar tint. Public holidays are computed
-  // server-side and surface via skip reasons / run history, not here.
+  // Calendar tint per ISO day: manual full-day blocks plus resolved public
+  // holidays (with their name for the tooltip). Holidays are fetched lazily by
+  // loadHolidays as the visible range changes.
   const blockedDays = useMemo(() => {
-    const m = new Map<string, string>();
+    const m = new Map<string, BlockedDay>();
+    for (const [date, name] of holidays) {
+      m.set(date, {reason: 'holiday', label: name});
+    }
+    // Manual blocks take precedence over a holiday tint on the same day.
     for (const d of exceptions.blocking_days ?? []) {
-      m.set(d, 'blocked');
+      m.set(d, {reason: 'blocked'});
     }
     return m;
-  }, [exceptions]);
+  }, [exceptions, holidays]);
+
+  // Upcoming holidays + manual blocks for the list view (next ~90 days).
+  const upcomingBlocks = useMemo(() => {
+    const out: {date: string; label: string; reason: 'blocked' | 'holiday'}[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + 90);
+    for (const [date, day] of blockedDays) {
+      const d = new Date(`${date}T00:00:00`);
+      if (d >= today && d <= horizon) {
+        out.push({date, reason: day.reason, label: day.label ?? (day.reason === 'holiday' ? 'Public holiday' : 'Blocking day')});
+      }
+    }
+    out.sort((a, b) => a.date.localeCompare(b.date));
+    return out;
+  }, [blockedDays]);
 
   const enabledCount = schedules.filter((s) => s.enabled).length;
   const failureCount = runs.filter((r) => r.status === 'aborted' || r.status === 'failed').length;
@@ -249,11 +302,19 @@ export default function TasksPage() {
               <Box sx={{display: 'flex', gap: 1, flexWrap: 'wrap'}}>
                 <Button
                   variant="outlined"
+                  startIcon={<PlayIcon />}
+                  onClick={() => setStartOpen(true)}
+                  disabled={!rpc}
+                >
+                  Mow now
+                </Button>
+                <Button
+                  variant="outlined"
                   startIcon={<BlockIcon />}
                   onClick={() => setEditingExceptions(true)}
                   disabled={!rpc}
                 >
-                  Blocking days
+                  Exceptions
                 </Button>
                 <Button
                   variant="outlined"
@@ -283,13 +344,16 @@ export default function TasksPage() {
                 schedules={schedules}
                 runs={runs}
                 blockedDays={blockedDays}
+                blockWindows={exceptions.block_windows ?? []}
                 onSelectSchedule={setEditing}
+                onRangeChange={loadHolidays}
               />
-            ) : schedules.length === 0 ? (
+            ) : schedules.length === 0 && (exceptions.block_windows ?? []).length === 0 && upcomingBlocks.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{py: 2}}>
                 No schedules yet. Click <strong>New</strong> to create one.
               </Typography>
             ) : (
+              <>
               <List disablePadding>
                 {schedules.map((s) => (
                   <ListItem
@@ -363,6 +427,46 @@ export default function TasksPage() {
                   </ListItem>
                 ))}
               </List>
+
+              {(exceptions.block_windows ?? []).length > 0 && (
+                <Box sx={{mt: 2}}>
+                  <Typography variant="subtitle2" sx={{mb: 1}}>
+                    Block windows
+                  </Typography>
+                  <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
+                    {(exceptions.block_windows ?? []).map((w, i) => (
+                      <Chip
+                        key={i}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        icon={<BlockIcon />}
+                        label={describeBlockWindow(w)}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {upcomingBlocks.length > 0 && (
+                <Box sx={{mt: 2}}>
+                  <Typography variant="subtitle2" sx={{mb: 1}}>
+                    Upcoming blocked days
+                  </Typography>
+                  <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
+                    {upcomingBlocks.map((b) => (
+                      <Chip
+                        key={b.date}
+                        size="small"
+                        color="warning"
+                        variant={b.reason === 'holiday' ? 'filled' : 'outlined'}
+                        label={`${b.date} · ${b.label}`}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -377,6 +481,7 @@ export default function TasksPage() {
             onSave={handleSaveExceptions}
           />
         )}
+        {startOpen && <StartMowingDialog onClose={() => setStartOpen(false)} />}
         <RunHistoryDrawer open={historyOpen} runs={runs} onClose={() => setHistoryOpen(false)} />
       </PageContent>
     </Page>

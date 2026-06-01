@@ -1,6 +1,6 @@
 {
   "name": "openmower-app",
-  "version": "0.4.32-dev",
+  "version": "0.4.33-dev",
   "private": true,
   "scripts": {
     "dev": "next dev",
