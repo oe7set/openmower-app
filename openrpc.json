@@ -290,6 +290,61 @@
       }
     },
     {
+      "name": "schedule.history",
+      "summary": "List recent scheduler run outcomes, newest first. Surfaces completions and failures (e.g. an aborted/stuck run) per occurrence so the calendar can annotate days.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "schedule_id",
+          "description": "Optional. Restrict to a single schedule; omit for all schedules.",
+          "required": false,
+          "schema": {"type": "string"}
+        },
+        {
+          "name": "limit",
+          "description": "Optional. Maximum number of entries to return (default 50).",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 1}
+        }
+      ],
+      "result": {
+        "name": "runs",
+        "description": "Run-history entries, newest first.",
+        "schema": {
+          "type": "array",
+          "items": {"$ref": "#/components/schemas/ScheduleRun"}
+        }
+      }
+    },
+    {
+      "name": "exceptions.get",
+      "summary": "Get the mowing exceptions: manual blocking days plus the country/region whose public holidays also block mowing.",
+      "params": [],
+      "result": {
+        "name": "exceptions",
+        "description": "Current exceptions configuration.",
+        "schema": {"$ref": "#/components/schemas/MowingExceptions"}
+      }
+    },
+    {
+      "name": "exceptions.set",
+      "summary": "Replace the mowing exceptions. Validates the country/region against the holidays database.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "exceptions",
+          "description": "New exceptions configuration.",
+          "required": true,
+          "schema": {"$ref": "#/components/schemas/MowingExceptions"}
+        }
+      ],
+      "result": {
+        "name": "exceptions",
+        "description": "The persisted exceptions configuration.",
+        "schema": {"$ref": "#/components/schemas/MowingExceptions"}
+      }
+    },
+    {
       "name": "system.restart_service",
       "summary": "Restart a whitelisted systemd unit on the mower host.",
       "paramStructure": "by-name",
@@ -749,19 +804,58 @@
           "id": {"type": "string", "description": "Generated server-side when omitted."},
           "name": {"type": "string"},
           "enabled": {"type": "boolean"},
-          "areas": {"type": "array", "items": {"type": "integer"}},
-          "rrule": {"type": "string", "description": "iCal RRULE string (FREQ/BYDAY/BYHOUR/BYMINUTE)."},
-          "duration_minutes": {"type": "integer", "minimum": 1},
+          "mode": {
+            "type": "string",
+            "enum": ["time_area", "time_window", "continuous"],
+            "description": "Mowing-logic mode. 'time_area' (default): fire the rrule occurrence on the listed areas for duration_minutes. 'time_window': mow within a daily start/end window across active areas, resuming where the previous window left off. 'continuous' (24/7): keep automatic mode active, gated only by blocking days / rain. Defaults to 'time_area' on the server when missing."
+          },
+          "areas": {"type": "array", "items": {"type": "integer"}, "description": "Zero-based indices into the mow-type areas. Every listed area is mowed in order (multi-area)."},
+          "rrule": {"type": "string", "description": "iCal RRULE string. The server validates with python-dateutil; supports FREQ (DAILY/WEEKLY/MONTHLY), INTERVAL, BYDAY/BYHOUR/BYMINUTE, COUNT and UNTIL."},
+          "exdates": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Series exception dates (ISO 8601 'YYYY-MM-DD'). Occurrences on these dates are skipped without an event."
+          },
+          "duration_minutes": {"type": "integer", "minimum": 1, "description": "Used by 'time_area' mode as the stop-at-time horizon for the run."},
           "timezone": {
             "type": "string",
             "description": "IANA time zone name the rrule is interpreted in (e.g. 'Europe/Vienna'). Defaults to 'UTC' on the server when missing for legacy entries."
+          },
+          "window": {
+            "type": "object",
+            "description": "Used by 'time_window' mode only.",
+            "properties": {
+              "start": {"type": "string", "description": "Daily window start, 'HH:MM' in the schedule timezone."},
+              "end": {"type": "string", "description": "Daily window end, 'HH:MM' in the schedule timezone."},
+              "days": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                "description": "Weekdays the window is active on."
+              },
+              "area_wait_minutes": {"type": "integer", "minimum": 0, "description": "Idle wait inserted between areas within a window."}
+            }
           },
           "weather": {
             "type": "object",
             "properties": {"skip_if_rain": {"type": "boolean"}}
           },
+          "overrides": {
+            "type": "object",
+            "description": "Per-appointment parameter overrides. An omitted field falls back to the mower's global default.",
+            "properties": {
+              "speed_mps": {"type": "number", "description": "Mowing speed in m/s. Omit to use the global FTC planner speed."},
+              "pattern": {
+                "type": "string",
+                "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert"],
+                "description": "Coverage fill pattern. Omit to use the global default pattern."
+              },
+              "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."}
+            }
+          },
           "pattern": {
             "type": "object",
+            "deprecated": true,
+            "description": "Deprecated. Migrated server-side into 'overrides.angle_deg'. Retained for backward compatibility with v1 schedules.",
             "properties": {
               "angle_offset": {"type": "number"},
               "rotate_by_days": {"type": "integer"}
@@ -777,12 +871,45 @@
           },
           "last_skip_reason": {
             "type": "string",
-            "enum": ["no_state", "emergency", "not_idle", "charging", "rain"],
+            "enum": ["no_state", "emergency", "not_idle", "charging", "rain", "blocked", "holiday"],
             "description": "Read-only. Reason the most recent due occurrence was skipped. Omitted when no skip has been recorded."
           },
           "last_skip_at": {
             "type": "string",
             "description": "Read-only. ISO 8601 timestamp of the most recent skip. Omitted when no skip has been recorded."
+          }
+        }
+      },
+      "ScheduleRun": {
+        "type": "object",
+        "description": "A single scheduler run outcome, opened when a schedule fires and closed when the mow completes or aborts.",
+        "required": ["run_id", "schedule_id", "occurrence_iso", "status"],
+        "properties": {
+          "run_id": {"type": "string", "description": "Unique id correlating this run across the dispatch and its lifecycle events."},
+          "schedule_id": {"type": "string"},
+          "name": {"type": "string", "description": "Schedule name at the time of the run."},
+          "occurrence_iso": {"type": "string", "description": "ISO 8601 timestamp of the rrule occurrence that triggered the run."},
+          "started_iso": {"type": "string", "description": "ISO 8601 timestamp the run was dispatched."},
+          "ended_iso": {"type": "string", "description": "ISO 8601 timestamp the run was closed. Omitted while still running."},
+          "area_indices": {"type": "array", "items": {"type": "integer"}},
+          "status": {
+            "type": "string",
+            "enum": ["started", "completed", "aborted", "failed"],
+            "description": "Run outcome. 'started' = still running or never closed."
+          },
+          "reason": {"type": "string", "description": "Outcome detail, e.g. 'aborted', 'stopped_by_user'. Empty for clean completions."}
+        }
+      },
+      "MowingExceptions": {
+        "type": "object",
+        "description": "Days on which mowing is blocked: explicit blocking_days plus the public holidays of the configured country/region.",
+        "properties": {
+          "country": {"type": "string", "description": "ISO country code for public-holiday lookup, e.g. 'DE'. Empty disables holiday blocking."},
+          "subdiv": {"type": "string", "description": "Optional subdivision/region code, e.g. 'BY' for Bavaria. Empty for nationwide holidays."},
+          "blocking_days": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Manual blocking days as ISO 'YYYY-MM-DD'. Mowing is skipped on these dates regardless of schedules."
           }
         }
       }

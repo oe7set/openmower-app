@@ -12,27 +12,120 @@ export type StringDoaGddGA = string;
  */
 export type StringAm7XRL52 = string;
 export type BooleanVyG3AETh = boolean;
-export type Integer2AHOqbcQ = number;
-export type UnorderedSetOfInteger2AHOqbcQarZIQlOy = Integer2AHOqbcQ[];
 /**
  *
- * iCal RRULE string (FREQ/BYDAY/BYHOUR/BYMINUTE).
+ * Mowing-logic mode. 'time_area' (default): fire the rrule occurrence on the listed areas for duration_minutes. 'time_window': mow within a daily start/end window across active areas, resuming where the previous window left off. 'continuous' (24/7): keep automatic mode active, gated only by blocking days / rain. Defaults to 'time_area' on the server when missing.
  *
  */
-export type StringOhDBImii = string;
-export type IntegerOmVsfaNv = number;
+export type String8HOxumqc = "time_area" | "time_window" | "continuous";
+export type Integer2AHOqbcQ = number;
+/**
+ *
+ * Zero-based indices into the mow-type areas. Every listed area is mowed in order (multi-area).
+ *
+ */
+export type UnorderedSetOfInteger2AHOqbcQck4QOpRC = Integer2AHOqbcQ[];
+/**
+ *
+ * iCal RRULE string. The server validates with python-dateutil; supports FREQ (DAILY/WEEKLY/MONTHLY), INTERVAL, BYDAY/BYHOUR/BYMINUTE, COUNT and UNTIL.
+ *
+ */
+export type StringU4RlUo3D = string;
+/**
+ *
+ * Series exception dates (ISO 8601 'YYYY-MM-DD'). Occurrences on these dates are skipped without an event.
+ *
+ */
+export type UnorderedSetOfStringDoaGddGA2VviDRzF = StringDoaGddGA[];
+/**
+ *
+ * Used by 'time_area' mode as the stop-at-time horizon for the run.
+ *
+ */
+export type IntegerZ984LTOJ = number;
 /**
  *
  * IANA time zone name the rrule is interpreted in (e.g. 'Europe/Vienna'). Defaults to 'UTC' on the server when missing for legacy entries.
  *
  */
 export type StringNwgXXEkt = string;
+/**
+ *
+ * Daily window start, 'HH:MM' in the schedule timezone.
+ *
+ */
+export type StringPti3J7ZI = string;
+/**
+ *
+ * Daily window end, 'HH:MM' in the schedule timezone.
+ *
+ */
+export type String80JIivhs = string;
+export type StringLD1FOTDs = "MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU";
+/**
+ *
+ * Weekdays the window is active on.
+ *
+ */
+export type UnorderedSetOfStringLD1FOTDsxWHiLPH4 = StringLD1FOTDs[];
+/**
+ *
+ * Idle wait inserted between areas within a window.
+ *
+ */
+export type IntegerJYrdHJVi = number;
+/**
+ *
+ * Used by 'time_window' mode only.
+ *
+ */
+export interface ObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7Y {
+  start?: StringPti3J7ZI;
+  end?: String80JIivhs;
+  days?: UnorderedSetOfStringLD1FOTDsxWHiLPH4;
+  area_wait_minutes?: IntegerJYrdHJVi;
+  [k: string]: any;
+}
 export interface ObjectOfBooleanVyG3AEThF7X7Tx0W {
   skip_if_rain?: BooleanVyG3AETh;
   [k: string]: any;
 }
+/**
+ *
+ * Mowing speed in m/s. Omit to use the global FTC planner speed.
+ *
+ */
+export type NumberTtIyjGFW = number;
+/**
+ *
+ * Coverage fill pattern. Omit to use the global default pattern.
+ *
+ */
+export type StringRFIYbPGe = "linear" | "concentric_lines" | "concentric_circle" | "hilbert";
+/**
+ *
+ * Absolute mowing angle in degrees. Omit to use the global/auto-detected angle.
+ *
+ */
+export type NumberA4WF8D4D = number;
+/**
+ *
+ * Per-appointment parameter overrides. An omitted field falls back to the mower's global default.
+ *
+ */
+export interface ObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0Mdv {
+  speed_mps?: NumberTtIyjGFW;
+  pattern?: StringRFIYbPGe;
+  angle_deg?: NumberA4WF8D4D;
+  [k: string]: any;
+}
 export type NumberHo1ClIqD = number;
-export interface ObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6Z {
+/**
+ *
+ * Deprecated. Migrated server-side into 'overrides.angle_deg'. Retained for backward compatibility with v1 schedules.
+ *
+ */
+export interface ObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7Q {
   angle_offset?: NumberHo1ClIqD;
   rotate_by_days?: Integer2AHOqbcQ;
   [k: string]: any;
@@ -54,13 +147,31 @@ export type String8AUA9TrY = string;
  * Read-only. Reason the most recent due occurrence was skipped. Omitted when no skip has been recorded.
  *
  */
-export type String5V2WXAHZ = "no_state" | "emergency" | "not_idle" | "charging" | "rain";
+export type String3U1V48UB = "no_state" | "emergency" | "not_idle" | "charging" | "rain" | "blocked" | "holiday";
 /**
  *
  * Read-only. ISO 8601 timestamp of the most recent skip. Omitted when no skip has been recorded.
  *
  */
 export type StringQhq3HSA0 = string;
+/**
+ *
+ * ISO country code for public-holiday lookup, e.g. 'DE'. Empty disables holiday blocking.
+ *
+ */
+export type StringPIVdEUDG = string;
+/**
+ *
+ * Optional subdivision/region code, e.g. 'BY' for Bavaria. Empty for nationwide holidays.
+ *
+ */
+export type StringW73LspcZ = string;
+/**
+ *
+ * Manual blocking days as ISO 'YYYY-MM-DD'. Mowing is skipped on these dates regardless of schedules.
+ *
+ */
+export type UnorderedSetOfStringDoaGddGAxIQucMbf = StringDoaGddGA[];
 /**
  *
  * Content of a YAML file as a string
@@ -76,20 +187,84 @@ export interface ObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODF {
 }
 export type UnorderedSetOfObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODFGua3KoaT = ObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODF[];
 export interface ObjectIZgu6KjQ { [key: string]: any; }
-export interface ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2V {
+export interface ObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdr {
   id?: StringAm7XRL52;
   name: StringDoaGddGA;
   enabled: BooleanVyG3AETh;
-  areas: UnorderedSetOfInteger2AHOqbcQarZIQlOy;
-  rrule: StringOhDBImii;
-  duration_minutes: IntegerOmVsfaNv;
+  mode?: String8HOxumqc;
+  areas: UnorderedSetOfInteger2AHOqbcQck4QOpRC;
+  rrule: StringU4RlUo3D;
+  exdates?: UnorderedSetOfStringDoaGddGA2VviDRzF;
+  duration_minutes: IntegerZ984LTOJ;
   timezone: StringNwgXXEkt;
+  window?: ObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7Y;
   weather?: ObjectOfBooleanVyG3AEThF7X7Tx0W;
-  pattern?: ObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6Z;
+  overrides?: ObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0Mdv;
+  pattern?: ObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7Q;
   next_run?: StringOIDLIvtl;
   last_fired_at?: String8AUA9TrY;
-  last_skip_reason?: String5V2WXAHZ;
+  last_skip_reason?: String3U1V48UB;
   last_skip_at?: StringQhq3HSA0;
+  [k: string]: any;
+}
+/**
+ *
+ * Unique id correlating this run across the dispatch and its lifecycle events.
+ *
+ */
+export type StringEfOF2Tab = string;
+/**
+ *
+ * Schedule name at the time of the run.
+ *
+ */
+export type StringIgmTLAHJ = string;
+/**
+ *
+ * ISO 8601 timestamp of the rrule occurrence that triggered the run.
+ *
+ */
+export type StringB7N8MIyA = string;
+/**
+ *
+ * ISO 8601 timestamp the run was dispatched.
+ *
+ */
+export type StringVgJsWAxb = string;
+/**
+ *
+ * ISO 8601 timestamp the run was closed. Omitted while still running.
+ *
+ */
+export type StringUlYO7V8F = string;
+export type UnorderedSetOfInteger2AHOqbcQarZIQlOy = Integer2AHOqbcQ[];
+/**
+ *
+ * Run outcome. 'started' = still running or never closed.
+ *
+ */
+export type StringVpQXKS8Z = "started" | "completed" | "aborted" | "failed";
+/**
+ *
+ * Outcome detail, e.g. 'aborted', 'stopped_by_user'. Empty for clean completions.
+ *
+ */
+export type StringMVRSI8C0 = string;
+/**
+ *
+ * A single scheduler run outcome, opened when a schedule fires and closed when the mow completes or aborts.
+ *
+ */
+export interface ObjectOfStringVpQXKS8ZStringVgJsWAxbStringDoaGddGAStringEfOF2TabStringMVRSI8C0StringB7N8MIyAStringIgmTLAHJStringUlYO7V8FUnorderedSetOfInteger2AHOqbcQarZIQlOyLR2TletX {
+  run_id: StringEfOF2Tab;
+  schedule_id: StringDoaGddGA;
+  name?: StringIgmTLAHJ;
+  occurrence_iso: StringB7N8MIyA;
+  started_iso?: StringVgJsWAxb;
+  ended_iso?: StringUlYO7V8F;
+  area_indices?: UnorderedSetOfInteger2AHOqbcQarZIQlOy;
+  status: StringVpQXKS8Z;
+  reason?: StringMVRSI8C0;
   [k: string]: any;
 }
 /**
@@ -228,6 +403,18 @@ export interface Object8Zf4CCW2 { [key: string]: any; }
 export interface ObjectHAgrRKSz { [key: string]: any; }
 export type Integer7Bd9WOt2 = number;
 export type AnyL9Fw4VUO = any;
+export type IntegerOmVsfaNv = number;
+/**
+ *
+ * Days on which mowing is blocked: explicit blocking_days plus the public holidays of the configured country/region.
+ *
+ */
+export interface ObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0H {
+  country?: StringPIVdEUDG;
+  subdiv?: StringW73LspcZ;
+  blocking_days?: UnorderedSetOfStringDoaGddGAxIQucMbf;
+  [k: string]: any;
+}
 export type String8MpEGeOy = "openmower" | "mower_logic" | "xbot_monitoring" | "move_base_flex";
 export type IntegerQDdWfSg7 = number;
 export type StringYKWJZZDp = "all" | "mower_logic" | "xbot_monitoring" | "mower_scheduler" | "move_base_flex";
@@ -257,7 +444,8 @@ export interface ObjectOfObjectIZgu6KjQ48UMYEZj {
   values: ObjectIZgu6KjQ;
   [k: string]: any;
 }
-export type UnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2VDBGx4Qeh = ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2V[];
+export type UnorderedSetOfObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdrg1NXty3H = ObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdr[];
+export type UnorderedSetOfObjectOfStringVpQXKS8ZStringVgJsWAxbStringDoaGddGAStringEfOF2TabStringMVRSI8C0StringB7N8MIyAStringIgmTLAHJStringUlYO7V8FUnorderedSetOfInteger2AHOqbcQarZIQlOyLR2TletX3XU5XiEl = ObjectOfStringVpQXKS8ZStringVgJsWAxbStringDoaGddGAStringEfOF2TabStringMVRSI8C0StringB7N8MIyAStringIgmTLAHJStringUlYO7V8FUnorderedSetOfInteger2AHOqbcQarZIQlOyLR2TletX[];
 export interface ObjectOfBooleanVyG3AEThInteger2AHOqbcQIQdazwvG {
   ok?: BooleanVyG3AETh;
   delay_s?: Integer2AHOqbcQ;
@@ -322,7 +510,7 @@ export interface ObjectOfObject8Zf4CCW24GqovvrD {
  * Generated! Represents an alias to any of the provided schemas
  *
  */
-export type AnyOfObjectHAgrRKSzInteger7Bd9WOt2ObjectIZgu6KjQUnorderedSetOfStringDoaGddGADvj0XlFaStringDoaGddGAAnyL9Fw4VUOObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2VStringDoaGddGAString8MpEGeOyIntegerQDdWfSg7StringYKWJZZDpIntegerGCqMpUyLStringDoaGddGAIntegerOmVsfaNvIntegerN0RpaiaMInteger7Bd9WOt2StringIQ4UVKQjUnorderedSetOfStringDoaGddGADvj0XlFaStringDoaGddGAStringDoaGddGAInteger7Bd9WOt2IntegerVGvI61GhInteger7Bd9WOt2IntegerVGvI61GhStringZDJW5SIjUnorderedSetOfStringDoaGddGADvj0XlFaNullQu0Arl1FNullQu0Arl1FObjectOfBooleanVyG3AEThIj5UHSflStringZDJW5SIjStringDoaGddGAObjectHicl3T4FObjectBd6DQSjJObjectOfUnorderedSetOfStringDoaGddGADvj0XlFaInteger2AHOqbcQUnorderedSetOfObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODFGua3KoaTAuVjlbwBObjectOfObjectIZgu6KjQ48UMYEZjNullQu0Arl1FUnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2VDBGx4QehObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2VNullQu0Arl1FObjectOfBooleanVyG3AEThIj5UHSflObjectOfBooleanVyG3AEThInteger2AHOqbcQIQdazwvGObjectOfNumberHo1ClIqDInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQIntegerPspRrr78Integer2AHOqbcQNumberU8K1Uas0NumberP4YjumIFE1QlmvONObjectOfInteger2AHOqbcQStringDoaGddGABooleanVyG3AEThWJ46RKI7ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525NObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBInteger2AHOqbcQStringDoaGddGAInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDQ1YTyTgxEuFQMiZQWVpN69FdObjectOfBooleanVyG3AEThUnorderedSetOfObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDInteger2AHOqbcQNumberHo1ClIqDInteger2AHOqbcQ1XQsAsbUKkqlHHoEPGPQJtX1ObjectOfInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDUnorderedSetOfNumberHo1ClIqDC9YO3FZRObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDBYn6PexVUnorderedSetOfNumberHo1ClIqDC9YO3FZRKRBICRb2ObjectOfInteger2AHOqbcQUnorderedSetOfObjectOfStringDLUYbyEJIntegerRGdkPNscString836AVxQgStringVd3W2HD3StringIQ4UVKQjString3RwRKkvGObjectWKqX2MzRBooleanC0TIr4AuJMUDeaEERCDBF6Ob2Ihe7M12ObjectOfBooleanVyG3AEThIj5UHSflObjectOfBooleanVyG3AEThIj5UHSflObjectOfBooleanVyG3AEThIj5UHSflObjectOfStringDoaGddGAUnorderedSetOfObjectOfNumberHo1ClIqDIntegerSAdpLmxWX6TdOslv3Y9GQJtaGs9BtQ5UObjectOfObject8Zf4CCW24GqovvrD = ObjectHAgrRKSz | Integer7Bd9WOt2 | ObjectIZgu6KjQ | UnorderedSetOfStringDoaGddGADvj0XlFa | StringDoaGddGA | AnyL9Fw4VUO | ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2V | String8MpEGeOy | IntegerQDdWfSg7 | StringYKWJZZDp | IntegerGCqMpUyL | IntegerOmVsfaNv | IntegerN0RpaiaM | StringIQ4UVKQj | IntegerVGvI61Gh | StringZDJW5SIj | NullQu0Arl1F | ObjectOfBooleanVyG3AEThIj5UHSfl | ObjectHicl3T4F | ObjectBd6DQSjJ | ObjectOfUnorderedSetOfStringDoaGddGADvj0XlFaInteger2AHOqbcQUnorderedSetOfObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODFGua3KoaTAuVjlbwB | ObjectOfObjectIZgu6KjQ48UMYEZj | UnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2VDBGx4Qeh | ObjectOfBooleanVyG3AEThInteger2AHOqbcQIQdazwvG | ObjectOfNumberHo1ClIqDInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQIntegerPspRrr78Integer2AHOqbcQNumberU8K1Uas0NumberP4YjumIFE1QlmvON | ObjectOfInteger2AHOqbcQStringDoaGddGABooleanVyG3AEThWJ46RKI7 | ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525N | ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBInteger2AHOqbcQStringDoaGddGAInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDQ1YTyTgxEuFQMiZQWVpN69Fd | ObjectOfBooleanVyG3AEThUnorderedSetOfObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDInteger2AHOqbcQNumberHo1ClIqDInteger2AHOqbcQ1XQsAsbUKkqlHHoEPGPQJtX1 | ObjectOfInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDUnorderedSetOfNumberHo1ClIqDC9YO3FZRObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDBYn6PexVUnorderedSetOfNumberHo1ClIqDC9YO3FZRKRBICRb2 | ObjectOfInteger2AHOqbcQUnorderedSetOfObjectOfStringDLUYbyEJIntegerRGdkPNscString836AVxQgStringVd3W2HD3StringIQ4UVKQjString3RwRKkvGObjectWKqX2MzRBooleanC0TIr4AuJMUDeaEERCDBF6Ob2Ihe7M12 | ObjectOfStringDoaGddGAUnorderedSetOfObjectOfNumberHo1ClIqDIntegerSAdpLmxWX6TdOslv3Y9GQJtaGs9BtQ5U | ObjectOfObject8Zf4CCW24GqovvrD;
+export type AnyOfObjectHAgrRKSzInteger7Bd9WOt2ObjectIZgu6KjQUnorderedSetOfStringDoaGddGADvj0XlFaStringDoaGddGAAnyL9Fw4VUOObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdrStringDoaGddGAStringDoaGddGAIntegerOmVsfaNvObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0HString8MpEGeOyIntegerQDdWfSg7StringYKWJZZDpIntegerGCqMpUyLStringDoaGddGAIntegerOmVsfaNvIntegerN0RpaiaMInteger7Bd9WOt2StringIQ4UVKQjUnorderedSetOfStringDoaGddGADvj0XlFaStringDoaGddGAStringDoaGddGAInteger7Bd9WOt2IntegerVGvI61GhInteger7Bd9WOt2IntegerVGvI61GhStringZDJW5SIjUnorderedSetOfStringDoaGddGADvj0XlFaNullQu0Arl1FNullQu0Arl1FObjectOfBooleanVyG3AEThIj5UHSflStringZDJW5SIjStringDoaGddGAObjectHicl3T4FObjectBd6DQSjJObjectOfUnorderedSetOfStringDoaGddGADvj0XlFaInteger2AHOqbcQUnorderedSetOfObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODFGua3KoaTAuVjlbwBObjectOfObjectIZgu6KjQ48UMYEZjNullQu0Arl1FUnorderedSetOfObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdrg1NXty3HObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdrNullQu0Arl1FUnorderedSetOfObjectOfStringVpQXKS8ZStringVgJsWAxbStringDoaGddGAStringEfOF2TabStringMVRSI8C0StringB7N8MIyAStringIgmTLAHJStringUlYO7V8FUnorderedSetOfInteger2AHOqbcQarZIQlOyLR2TletX3XU5XiElObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0HObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0HObjectOfBooleanVyG3AEThIj5UHSflObjectOfBooleanVyG3AEThInteger2AHOqbcQIQdazwvGObjectOfNumberHo1ClIqDInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQIntegerPspRrr78Integer2AHOqbcQNumberU8K1Uas0NumberP4YjumIFE1QlmvONObjectOfInteger2AHOqbcQStringDoaGddGABooleanVyG3AEThWJ46RKI7ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525NObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBInteger2AHOqbcQStringDoaGddGAInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDQ1YTyTgxEuFQMiZQWVpN69FdObjectOfBooleanVyG3AEThUnorderedSetOfObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDInteger2AHOqbcQNumberHo1ClIqDInteger2AHOqbcQ1XQsAsbUKkqlHHoEPGPQJtX1ObjectOfInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDUnorderedSetOfNumberHo1ClIqDC9YO3FZRObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDBYn6PexVUnorderedSetOfNumberHo1ClIqDC9YO3FZRKRBICRb2ObjectOfInteger2AHOqbcQUnorderedSetOfObjectOfStringDLUYbyEJIntegerRGdkPNscString836AVxQgStringVd3W2HD3StringIQ4UVKQjString3RwRKkvGObjectWKqX2MzRBooleanC0TIr4AuJMUDeaEERCDBF6Ob2Ihe7M12ObjectOfBooleanVyG3AEThIj5UHSflObjectOfBooleanVyG3AEThIj5UHSflObjectOfBooleanVyG3AEThIj5UHSflObjectOfStringDoaGddGAUnorderedSetOfObjectOfNumberHo1ClIqDIntegerSAdpLmxWX6TdOslv3Y9GQJtaGs9BtQ5UObjectOfObject8Zf4CCW24GqovvrD = ObjectHAgrRKSz | Integer7Bd9WOt2 | ObjectIZgu6KjQ | UnorderedSetOfStringDoaGddGADvj0XlFa | StringDoaGddGA | AnyL9Fw4VUO | ObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdr | IntegerOmVsfaNv | ObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0H | String8MpEGeOy | IntegerQDdWfSg7 | StringYKWJZZDp | IntegerGCqMpUyL | IntegerN0RpaiaM | StringIQ4UVKQj | IntegerVGvI61Gh | StringZDJW5SIj | NullQu0Arl1F | ObjectOfBooleanVyG3AEThIj5UHSfl | ObjectHicl3T4F | ObjectBd6DQSjJ | ObjectOfUnorderedSetOfStringDoaGddGADvj0XlFaInteger2AHOqbcQUnorderedSetOfObjectOfString9BJAV6BuStringDoaGddGASkKJ8ODFGua3KoaTAuVjlbwB | ObjectOfObjectIZgu6KjQ48UMYEZj | UnorderedSetOfObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdrg1NXty3H | UnorderedSetOfObjectOfStringVpQXKS8ZStringVgJsWAxbStringDoaGddGAStringEfOF2TabStringMVRSI8C0StringB7N8MIyAStringIgmTLAHJStringUlYO7V8FUnorderedSetOfInteger2AHOqbcQarZIQlOyLR2TletX3XU5XiEl | ObjectOfBooleanVyG3AEThInteger2AHOqbcQIQdazwvG | ObjectOfNumberHo1ClIqDInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQInteger2AHOqbcQIntegerPspRrr78Integer2AHOqbcQNumberU8K1Uas0NumberP4YjumIFE1QlmvON | ObjectOfInteger2AHOqbcQStringDoaGddGABooleanVyG3AEThWJ46RKI7 | ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBStringDoaGddGAStringDoaGddGAStringSkVxiS6EYfecu46YPnkCtRjyCwlY525N | ObjectOfUnorderedSetOfObjectOfNumberCxGOTzvBInteger2AHOqbcQStringDoaGddGAInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDQ1YTyTgxEuFQMiZQWVpN69Fd | ObjectOfBooleanVyG3AEThUnorderedSetOfObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDInteger2AHOqbcQNumberHo1ClIqDInteger2AHOqbcQ1XQsAsbUKkqlHHoEPGPQJtX1 | ObjectOfInteger2AHOqbcQNumberHo1ClIqDNumberHo1ClIqDUnorderedSetOfNumberHo1ClIqDC9YO3FZRObjectOfNumberHo1ClIqDNumberHo1ClIqDNumberHo1ClIqDBYn6PexVUnorderedSetOfNumberHo1ClIqDC9YO3FZRKRBICRb2 | ObjectOfInteger2AHOqbcQUnorderedSetOfObjectOfStringDLUYbyEJIntegerRGdkPNscString836AVxQgStringVd3W2HD3StringIQ4UVKQjString3RwRKkvGObjectWKqX2MzRBooleanC0TIr4AuJMUDeaEERCDBF6Ob2Ihe7M12 | ObjectOfStringDoaGddGAUnorderedSetOfObjectOfNumberHo1ClIqDIntegerSAdpLmxWX6TdOslv3Y9GQJtaGs9BtQ5U | ObjectOfObject8Zf4CCW24GqovvrD;
 
 export class OpenMowerRpc extends OpenMowerBaseRpc {
   rpc = {
@@ -391,15 +579,29 @@ export class OpenMowerRpc extends OpenMowerBaseRpc {
     /**
     * List all configured mowing schedules.
     */
-    list: async (): Promise<UnorderedSetOfObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2VDBGx4Qeh> => this.call('schedule.list'),
+    list: async (): Promise<UnorderedSetOfObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdrg1NXty3H> => this.call('schedule.list'),
     /**
     * Insert or update a schedule. The ID is generated server-side when missing.
     */
-    upsert: async (args: {schedule: ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2V}): Promise<ObjectOfObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringOhDBImiiObjectOfInteger2AHOqbcQNumberHo1ClIqDGDk4KF6ZStringOIDLIvtlStringDoaGddGAString5V2WXAHZStringQhq3HSA0String8AUA9TrYStringAm7XRL52BooleanVyG3AEThIntegerOmVsfaNvUnorderedSetOfInteger2AHOqbcQarZIQlOyShPpfD2V> => this.call('schedule.upsert', args),
+    upsert: async (args: {schedule: ObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdr}): Promise<ObjectOfObjectOfStringPti3J7ZIString80JIivhsUnorderedSetOfStringLD1FOTDsxWHiLPH4IntegerJYrdHJVi8UKwZM7YObjectOfBooleanVyG3AEThF7X7Tx0WStringNwgXXEktStringU4RlUo3DObjectOfInteger2AHOqbcQNumberHo1ClIqDBpX8Oj7QObjectOfNumberTtIyjGFWStringRFIYbPGeNumberA4WF8D4DAjoN0MdvStringOIDLIvtlStringDoaGddGAString8HOxumqcString3U1V48UBStringQhq3HSA0String8AUA9TrYStringAm7XRL52UnorderedSetOfStringDoaGddGA2VviDRzFBooleanVyG3AEThIntegerZ984LTOJUnorderedSetOfInteger2AHOqbcQck4QOpRCEGiTsZdr> => this.call('schedule.upsert', args),
     /**
     * Remove a schedule by id.
     */
     delete: async (args: {id: StringDoaGddGA}): Promise<void> => this.call('schedule.delete', args),
+    /**
+    * List recent scheduler run outcomes, newest first. Surfaces completions and failures (e.g. an aborted/stuck run) per occurrence so the calendar can annotate days.
+    */
+    history: async (args: {schedule_id?: StringDoaGddGA, limit?: IntegerOmVsfaNv}): Promise<UnorderedSetOfObjectOfStringVpQXKS8ZStringVgJsWAxbStringDoaGddGAStringEfOF2TabStringMVRSI8C0StringB7N8MIyAStringIgmTLAHJStringUlYO7V8FUnorderedSetOfInteger2AHOqbcQarZIQlOyLR2TletX3XU5XiEl> => this.call('schedule.history', args),
+  };
+  exceptions = {
+    /**
+    * Get the mowing exceptions: manual blocking days plus the country/region whose public holidays also block mowing.
+    */
+    get: async (): Promise<ObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0H> => this.call('exceptions.get'),
+    /**
+    * Replace the mowing exceptions. Validates the country/region against the holidays database.
+    */
+    set: async (args: {exceptions: ObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0H}): Promise<ObjectOfStringW73LspcZStringPIVdEUDGUnorderedSetOfStringDoaGddGAxIQucMbfOXtN2H0H> => this.call('exceptions.set', args),
   };
   system = {
     /**
