@@ -76,6 +76,113 @@
       }
     },
     {
+      "name": "coverage.preview",
+      "summary": "Compute the exact slic3r coverage path for an area without executing it, for on-map preview. All parameters are concrete (the caller resolves 'use default' against the live config first); geometry is in mower-relative metres like Area.outline.",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "outline",
+          "description": "Area boundary polygon as [x, y] points in mower-relative metres.",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}
+          }
+        },
+        {
+          "name": "holes",
+          "description": "Obstacle polygons within the area (slic3r holes), each as [x, y] points in mower-relative metres.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}
+            }
+          }
+        },
+        {
+          "name": "fill_type",
+          "description": "slic3r fill enum: 0=linear, 1=concentric_lines, 2=concentric_circle, 3=hilbert, 4=grid, 5=honeycomb, 6=octagram.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        },
+        {
+          "name": "angle_rad",
+          "description": "Mowing stripe angle in radians.",
+          "required": false,
+          "schema": {"type": "number"}
+        },
+        {
+          "name": "distance",
+          "description": "Stripe spacing / tool width in metres.",
+          "required": false,
+          "schema": {"type": "number"}
+        },
+        {
+          "name": "outer_offset",
+          "description": "Additional offset from the outline in metres.",
+          "required": false,
+          "schema": {"type": "number"}
+        },
+        {
+          "name": "outline_count",
+          "description": "Number of perimeter passes before the fill pattern.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        },
+        {
+          "name": "outline_overlap_count",
+          "description": "Number of perimeter passes that overlap with the fill.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        },
+        {
+          "name": "skip_area_outline",
+          "description": "Skip the area boundary passes.",
+          "required": false,
+          "schema": {"type": "boolean"}
+        },
+        {
+          "name": "skip_obstacle_outlines",
+          "description": "Skip the obstacle boundary passes.",
+          "required": false,
+          "schema": {"type": "boolean"}
+        },
+        {
+          "name": "skip_fill",
+          "description": "Skip the fill pattern (outline passes only).",
+          "required": false,
+          "schema": {"type": "boolean"}
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The planned coverage paths. Each path is flagged as an outline pass or a fill pass; points are [x, y] in mower-relative metres. fill_fallback is true when the requested pattern produced no usable infill and the planner fell back to a linear fill.",
+        "schema": {
+          "type": "object",
+          "required": ["paths", "fill_fallback"],
+          "properties": {
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["is_outline", "points"],
+                "properties": {
+                  "is_outline": {"type": "boolean"},
+                  "points": {
+                    "type": "array",
+                    "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}
+                  }
+                }
+              }
+            },
+            "fill_fallback": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    {
       "name": "mower.return_home",
       "summary": "Tell the mower to return to its docking station, regardless of the current state.",
       "params": [],

@@ -11,6 +11,10 @@ export interface MapPalette {
   coverage: string;
   /** Live planned path from move_base_flex (next few metres). */
   planned: string;
+  /** On-demand coverage preview — the fill passes slic3r would mow. */
+  previewFill: string;
+  /** On-demand coverage preview — the perimeter/outline passes. */
+  previewOutline: string;
 }
 
 export function mapPalette(theme: Theme): MapPalette {
@@ -18,5 +22,7 @@ export function mapPalette(theme: Theme): MapPalette {
     trail: theme.palette.success.light,
     coverage: theme.palette.info.main,
     planned: theme.palette.warning.main,
+    previewFill: theme.palette.secondary.main,
+    previewOutline: theme.palette.secondary.dark,
   };
 }

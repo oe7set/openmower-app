@@ -103,6 +103,19 @@ const areaSchema = z.object({
     name: z.string().optional(),
     type: z.enum(['mow', 'nav', 'obstacle', 'draft']).default('draft'),
     active: z.boolean().default(true),
+    // Per-area mowing-parameter overrides (all optional; an absent field falls
+    // back to the global config on the mower). These round-trip verbatim
+    // through map.replace into the ROS MapArea properties — keep the names and
+    // units in sync with mower_map_service.cpp: `angle` is in radians and
+    // `fill_type` is the slic3r fill enum int (see area-mow-params.ts for the
+    // conversion to the UI's degrees / MowPattern string).
+    angle: z.number().optional(),
+    fill_type: z.number().int().optional(),
+    outline_count: z.number().int().optional(),
+    outline_overlap_count: z.number().int().optional(),
+    outline_offset: z.number().optional(),
+    distance: z.number().optional(),
+    speed_mps: z.number().optional(),
   }),
   outline: polygonSchema,
 });

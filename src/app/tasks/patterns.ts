@@ -45,3 +45,29 @@ export function patternLabel(pattern: MowPattern | undefined | null): string {
   if (!pattern) return 'Default';
   return LABEL_BY_VALUE.get(pattern) ?? pattern;
 }
+
+// Single source of truth for the MowPattern string <-> slic3r fill enum int
+// mapping documented at the top of this file. The order matches the FILL_*
+// constants in slic3r_coverage_planner/srv/PlanPath.srv.
+export const FILL_BY_PATTERN: Record<MowPattern, number> = {
+  linear: 0,
+  concentric_lines: 1,
+  concentric_circle: 2,
+  hilbert: 3,
+  grid: 4,
+  honeycomb: 5,
+  octagram: 6,
+};
+
+const PATTERN_BY_FILL = new Map<number, MowPattern>(
+  (Object.entries(FILL_BY_PATTERN) as [MowPattern, number][]).map(([pattern, fill]) => [fill, pattern]),
+);
+
+export function patternToFill(pattern: MowPattern): number {
+  return FILL_BY_PATTERN[pattern];
+}
+
+export function fillToPattern(fill: number | undefined | null): MowPattern | undefined {
+  if (fill == null) return undefined;
+  return PATTERN_BY_FILL.get(fill);
+}

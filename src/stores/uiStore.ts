@@ -43,6 +43,8 @@ interface UiStore {
   showMowingTrail: boolean;
   /** Show a translucent stripe overlay on each mowing area to visualise pattern. */
   showPatternPreview: boolean;
+  /** Show the on-demand slic3r coverage-path preview computed for a single area. */
+  showCoveragePreview: boolean;
   /** Cap for teleop velocity in [0, 1]. The /drive slider writes this. */
   teleopSpeedCap: number;
 
@@ -83,6 +85,7 @@ interface UiStore {
   setShowCoveragePath: (v: boolean) => void;
   setShowMowingTrail: (v: boolean) => void;
   setShowPatternPreview: (v: boolean) => void;
+  setShowCoveragePreview: (v: boolean) => void;
   setTeleopSpeedCap: (v: number) => void;
 
   setDrawerAnchor: (v: DrawerAnchor) => void;
@@ -143,6 +146,7 @@ export const useUiStore = create<UiStore>()(
       showCoveragePath: false,
       showMowingTrail: false,
       showPatternPreview: false,
+      showCoveragePreview: true,
       teleopSpeedCap: 0.6,
       ...APPEARANCE_DEFAULTS,
       ...IMU_LOOK_DEFAULTS,
@@ -153,6 +157,7 @@ export const useUiStore = create<UiStore>()(
       setShowCoveragePath: (showCoveragePath) => set({showCoveragePath}),
       setShowMowingTrail: (showMowingTrail) => set({showMowingTrail}),
       setShowPatternPreview: (showPatternPreview) => set({showPatternPreview}),
+      setShowCoveragePreview: (showCoveragePreview) => set({showCoveragePreview}),
       setTeleopSpeedCap: (teleopSpeedCap) =>
         set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
       setDrawerAnchor: (drawerAnchor) => set({drawerAnchor}),

@@ -14,7 +14,7 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import {Box, useMediaQuery, useTheme, type SxProps} from '@mui/material';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
-import {ActivityIcon, FocusIcon, GridIcon, LayoutListIcon, PencilIcon, PlayCircleIcon, RouteIcon, SquareIcon} from 'lucide-react';
+import {ActivityIcon, FocusIcon, GridIcon, LayoutListIcon, PencilIcon, PlayCircleIcon, RouteIcon, SplineIcon, SquareIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
@@ -32,6 +32,7 @@ import {DownloadButton} from './edit/DownloadButton';
 import EditControls from './edit/EditControls';
 import {IssuesButton} from './edit/IssuesButton';
 import {UploadButton} from './edit/UploadButton';
+import CoveragePreviewLayer from './layers/CoveragePreviewLayer';
 import MapOverlayLayer from './layers/MapOverlayLayer';
 import PathLayer from './layers/PathLayer';
 import PatternPreviewLayer from './layers/PatternPreviewLayer';
@@ -56,7 +57,8 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   // MapContext owns bounds/fitToBounds/issues — its datum is mirrored from
   // MapPage's useEffectiveDatum hook. We use realDatum for our path/marker
   // layers (only render them when a real datum is known, never the fallback).
-  const {id, editMode, setEditMode, features, setFeatures, drawWorkflow, setDrawWorkflow, bounds} = useMapContext();
+  const {id, editMode, setEditMode, features, setFeatures, drawWorkflow, setDrawWorkflow, bounds, coveragePreview} =
+    useMapContext();
   const mapRef = useRef<Map>(null);
   const draw = useMapboxDraw();
   const [hoveredId, setHoveredId] = useMapHover();
@@ -90,6 +92,8 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const setShowMowingTrail = useUiStore((s) => s.setShowMowingTrail);
   const showPatternPreview = useUiStore((s) => s.showPatternPreview);
   const setShowPatternPreview = useUiStore((s) => s.setShowPatternPreview);
+  const showCoveragePreview = useUiStore((s) => s.showCoveragePreview);
+  const setShowCoveragePreview = useUiStore((s) => s.setShowCoveragePreview);
 
   // Outlines for the pattern preview come straight from mapData (already in
   // mower-relative metres). We only feed the active mowing-areas so obstacles
@@ -375,6 +379,15 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
           active={showPatternPreview}
           onClick={() => setShowPatternPreview(!showPatternPreview)}
         />
+        {coveragePreview && (
+          <ControlButton
+            position="top-right"
+            icon={SplineIcon}
+            title="Show coverage path preview (slic3r)"
+            active={showCoveragePreview}
+            onClick={() => setShowCoveragePreview(!showCoveragePreview)}
+          />
+        )}
         <DownloadButton />
         <UploadButton />
         <IssuesButton />
@@ -453,6 +466,14 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             mowingAreas={areas.filter((a) => a.properties.type === 'mow')}
             outlines={patternOutlines}
             datum={realDatum}
+          />
+        )}
+        {realDatum && showCoveragePreview && coveragePreview && (
+          <CoveragePreviewLayer
+            preview={coveragePreview}
+            datum={realDatum}
+            fillColor={pathColors.previewFill}
+            outlineColor={pathColors.previewOutline}
           />
         )}
         {realDatum && <MowerMarker datum={realDatum} />}

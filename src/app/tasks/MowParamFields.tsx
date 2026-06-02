@@ -1,5 +1,6 @@
 'use client';
 
+import type {AreaMowOverrides} from '@/utils/area-mow-params';
 import {Box, FormControl, FormControlLabel, MenuItem, Select, Slider, Switch, Typography} from '@mui/material';
 import {MOW_PATTERNS} from './patterns';
 import type {MowPattern, ScheduleOverrides} from './ScheduleEditor';
@@ -39,20 +40,32 @@ export function OverrideRow({
   );
 }
 
-// The full block of per-run mowing-parameter overrides: speed, fill pattern,
-// absolute angle and outline (perimeter) passes. Each toggle omits its field
-// when off so the backend uses the global default.
-export default function MowOverridesFields({
+// The full block of mowing-parameter override rows. The base rows (speed, fill
+// pattern, absolute angle, outline passes) match the per-run ScheduleOverrides
+// and are shown everywhere. The `extended` rows (outline overlap, outline
+// offset, tool width) are per-area-only and shown when extended=true. Each
+// toggle omits its field when off so the backend uses the global default.
+//
+// Driven on the AreaMowOverrides superset so a single set of controls powers
+// the schedule editor, the manual-start dialog and the per-area settings; when
+// extended is false the extra keys are never emitted, keeping the schedule
+// payload at exactly ScheduleOverrides.
+export function MowParamRows({
   overrides,
   onChange,
+  extended = false,
 }: {
-  overrides: ScheduleOverrides | undefined;
-  onChange: (patch: Partial<ScheduleOverrides>) => void;
+  overrides: AreaMowOverrides | undefined;
+  onChange: (patch: Partial<AreaMowOverrides>) => void;
+  extended?: boolean;
 }) {
   const speedOn = overrides?.speed_mps != null;
   const patternOn = overrides?.pattern != null;
   const angleOn = overrides?.angle_deg != null;
   const outlineOn = overrides?.outline_count != null;
+  const overlapOn = overrides?.outline_overlap_count != null;
+  const offsetOn = overrides?.outline_offset != null;
+  const distanceOn = overrides?.distance != null;
 
   return (
     <Box>
@@ -126,6 +139,88 @@ export default function MowOverridesFields({
           </Typography>
         </Box>
       </OverrideRow>
+
+      {extended && (
+        <>
+          <OverrideRow
+            label="Outline overlap"
+            on={overlapOn}
+            onToggle={(v) => onChange({outline_overlap_count: v ? 0 : undefined})}
+          >
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 2, px: 1}}>
+              <Slider
+                size="small"
+                min={0}
+                max={5}
+                step={1}
+                marks
+                value={overrides?.outline_overlap_count ?? 0}
+                onChange={(_, v) => onChange({outline_overlap_count: v as number})}
+                valueLabelDisplay="auto"
+              />
+              <Typography variant="body2" sx={{minWidth: 56}}>
+                {overrides?.outline_overlap_count ?? 0}×
+              </Typography>
+            </Box>
+          </OverrideRow>
+
+          <OverrideRow
+            label="Outline offset"
+            on={offsetOn}
+            onToggle={(v) => onChange({outline_offset: v ? 0 : undefined})}
+          >
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 2, px: 1}}>
+              <Slider
+                size="small"
+                min={-0.5}
+                max={0.5}
+                step={0.01}
+                value={overrides?.outline_offset ?? 0}
+                onChange={(_, v) => onChange({outline_offset: v as number})}
+                valueLabelDisplay="auto"
+              />
+              <Typography variant="body2" sx={{minWidth: 56}}>
+                {(overrides?.outline_offset ?? 0).toFixed(2)} m
+              </Typography>
+            </Box>
+          </OverrideRow>
+
+          <OverrideRow
+            label="Tool width"
+            on={distanceOn}
+            onToggle={(v) => onChange({distance: v ? 0.13 : undefined})}
+          >
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 2, px: 1}}>
+              <Slider
+                size="small"
+                min={0.1}
+                max={0.5}
+                step={0.01}
+                value={overrides?.distance ?? 0.13}
+                onChange={(_, v) => onChange({distance: v as number})}
+                valueLabelDisplay="auto"
+              />
+              <Typography variant="body2" sx={{minWidth: 56}}>
+                {(overrides?.distance ?? 0.13).toFixed(2)} m
+              </Typography>
+            </Box>
+          </OverrideRow>
+        </>
+      )}
     </Box>
   );
+}
+
+// The per-run override block (speed, fill pattern, absolute angle, outline
+// passes) used by the schedule editor and the manual-start dialog. A thin
+// adapter over MowParamRows that pins the type to ScheduleOverrides so the
+// schedule payload never grows the per-area-only fields.
+export default function MowOverridesFields({
+  overrides,
+  onChange,
+}: {
+  overrides: ScheduleOverrides | undefined;
+  onChange: (patch: Partial<ScheduleOverrides>) => void;
+}) {
+  return <MowParamRows overrides={overrides} onChange={onChange} />;
 }

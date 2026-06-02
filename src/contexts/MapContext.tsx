@@ -38,6 +38,22 @@ type SetFeatures = (
   userChange?: boolean,
 ) => void;
 
+// One slic3r path of the on-demand coverage preview: a polyline in mower-
+// relative metres, flagged as an outline pass or a fill pass.
+export interface CoveragePreviewPath {
+  is_outline: boolean;
+  points: {x: number; y: number}[];
+}
+
+// The result of a coverage.preview call, held ephemerally on the map context so
+// the dialog that requested it and the layer that renders it stay decoupled.
+export interface CoveragePreview {
+  /** Id of the area the preview was computed for. */
+  areaId: string;
+  paths: CoveragePreviewPath[];
+  fillFallback: boolean;
+}
+
 interface MapContextType {
   id: string;
   datum: Datum;
@@ -61,6 +77,8 @@ interface MapContextType {
   redo: () => FeatureCollection | null;
   hoveredId: string | null;
   setHoveredId: Dispatch<SetStateAction<string | null>>;
+  coveragePreview: CoveragePreview | null;
+  setCoveragePreview: Dispatch<SetStateAction<CoveragePreview | null>>;
 }
 
 interface SplitPolygonWorkflow {
@@ -97,6 +115,7 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
   const [trashEnabled, setTrashEnabled] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [coveragePreview, setCoveragePreview] = useState<CoveragePreview | null>(null);
   const [past, setPast] = useState<FeatureCollection[]>([]);
   const [future, setFuture] = useState<FeatureCollection[]>([]);
 
@@ -182,6 +201,8 @@ export const MapContextProvider = ({id, children}: {id: string; children: React.
         redo,
         hoveredId,
         setHoveredId,
+        coveragePreview,
+        setCoveragePreview,
       }}
     >
       {children}
