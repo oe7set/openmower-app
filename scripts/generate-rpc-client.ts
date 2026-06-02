@@ -60,11 +60,15 @@ function buildObject(node: any, methodTypings: MethodTypings, topLevel = false):
       const summary = ['/**', `* ${method.summary}`, '*/'];
       const types = methodTypings[method.name];
       const resultType = methodReturnsNothing(method) ? 'Promise<void>' : types.result;
+      // An optional trailing timeoutMs is threaded through to this.call so a
+      // caller hitting a slow RPC (e.g. a large telemetry.get_session payload)
+      // can override the default client timeout. The positional/spread form
+      // omits it — none of those methods need a custom timeout.
       const call =
         method.params.length === 0
-          ? `async (): ${resultType} => this.call('${method.name}')`
+          ? `async (timeoutMs?: number): ${resultType} => this.call('${method.name}', undefined, timeoutMs)`
           : method.paramStructure === 'by-name'
-          ? `async (args: {${types.params}}): ${resultType} => this.call('${method.name}', args)`
+          ? `async (args: {${types.params}}, timeoutMs?: number): ${resultType} => this.call('${method.name}', args, timeoutMs)`
           : `async (...args: [${types.params}]): ${resultType} => this.call('${method.name}', args)`;
       if (Object.keys(value).length > 1) {
         // both callable and nested → Object.assign

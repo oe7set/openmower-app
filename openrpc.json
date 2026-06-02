@@ -15,9 +15,7 @@
         "description": "Returns \"pong\" if successful.",
         "schema": {
           "type": "string",
-          "enum": [
-            "pong"
-          ]
+          "enum": ["pong"]
         }
       }
     },
@@ -213,14 +211,28 @@
           "schema": {
             "type": "object",
             "properties": {
-              "speed_mps": {"type": "number", "description": "Mowing speed in m/s. Omit to use the global FTC planner speed."},
+              "speed_mps": {
+                "type": "number",
+                "description": "Mowing speed in m/s (FTC speed_slow). Omit to use the global FTC planner speed."
+              },
+              "travel_speed_mps": {
+                "type": "number",
+                "description": "Travel/approach speed in m/s (FTC speed_fast) used between mow paths. Omit to use the global FTC planner speed."
+              },
               "pattern": {
                 "type": "string",
                 "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert", "grid", "honeycomb", "octagram"],
                 "description": "Coverage fill pattern. Omit to use the global default pattern."
               },
-              "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."},
-              "outline_count": {"type": "integer", "minimum": 0, "description": "Number of perimeter passes before the fill pattern. Omit to use the per-area/global default."}
+              "angle_deg": {
+                "type": "number",
+                "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."
+              },
+              "outline_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of perimeter passes before the fill pattern. Omit to use the per-area/global default."
+              }
             }
           }
         },
@@ -250,9 +262,7 @@
         "description": "Returns \"pong\" if successful.",
         "schema": {
           "type": "string",
-          "enum": [
-            "pong"
-          ]
+          "enum": ["pong"]
         }
       }
     },
@@ -1001,14 +1011,25 @@
             "enum": ["time_area", "time_window", "continuous"],
             "description": "Mowing-logic mode. 'time_area' (default): fire the rrule occurrence on the listed areas for duration_minutes. 'time_window': mow within a daily start/end window across active areas, resuming where the previous window left off. 'continuous' (24/7): keep automatic mode active, gated only by blocking days / rain. Defaults to 'time_area' on the server when missing."
           },
-          "areas": {"type": "array", "items": {"type": "integer"}, "description": "Zero-based indices into the mow-type areas. Every listed area is mowed in order (multi-area)."},
-          "rrule": {"type": "string", "description": "iCal RRULE string. The server validates with python-dateutil; supports FREQ (DAILY/WEEKLY/MONTHLY), INTERVAL, BYDAY/BYHOUR/BYMINUTE, COUNT and UNTIL."},
+          "areas": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "description": "Zero-based indices into the mow-type areas. Every listed area is mowed in order (multi-area)."
+          },
+          "rrule": {
+            "type": "string",
+            "description": "iCal RRULE string. The server validates with python-dateutil; supports FREQ (DAILY/WEEKLY/MONTHLY), INTERVAL, BYDAY/BYHOUR/BYMINUTE, COUNT and UNTIL."
+          },
           "exdates": {
             "type": "array",
             "items": {"type": "string"},
             "description": "Series exception dates (ISO 8601 'YYYY-MM-DD'). Occurrences on these dates are skipped without an event."
           },
-          "duration_minutes": {"type": "integer", "minimum": 1, "description": "Used by 'time_area' mode as the stop-at-time horizon for the run."},
+          "duration_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Used by 'time_area' mode as the stop-at-time horizon for the run."
+          },
           "timezone": {
             "type": "string",
             "description": "IANA time zone name the rrule is interpreted in (e.g. 'Europe/Vienna'). Defaults to 'UTC' on the server when missing for legacy entries."
@@ -1024,7 +1045,11 @@
                 "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
                 "description": "Weekdays the window is active on."
               },
-              "area_wait_minutes": {"type": "integer", "minimum": 0, "description": "Idle wait inserted between areas within a window."}
+              "area_wait_minutes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Idle wait inserted between areas within a window."
+              }
             }
           },
           "weather": {
@@ -1035,14 +1060,28 @@
             "type": "object",
             "description": "Per-appointment parameter overrides. An omitted field falls back to the mower's global default.",
             "properties": {
-              "speed_mps": {"type": "number", "description": "Mowing speed in m/s. Omit to use the global FTC planner speed."},
+              "speed_mps": {
+                "type": "number",
+                "description": "Mowing speed in m/s (FTC speed_slow). Omit to use the global FTC planner speed."
+              },
+              "travel_speed_mps": {
+                "type": "number",
+                "description": "Travel/approach speed in m/s (FTC speed_fast) used between mow paths. Omit to use the global FTC planner speed."
+              },
               "pattern": {
                 "type": "string",
                 "enum": ["linear", "concentric_lines", "concentric_circle", "hilbert", "grid", "honeycomb", "octagram"],
                 "description": "Coverage fill pattern. Omit to use the global default pattern."
               },
-              "angle_deg": {"type": "number", "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."},
-              "outline_count": {"type": "integer", "minimum": 0, "description": "Number of perimeter (outline) passes mowed before the fill pattern. Omit to use the per-area/global default."}
+              "angle_deg": {
+                "type": "number",
+                "description": "Absolute mowing angle in degrees. Omit to use the global/auto-detected angle."
+              },
+              "outline_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of perimeter (outline) passes mowed before the fill pattern. Omit to use the per-area/global default."
+              }
             }
           },
           "pattern": {
@@ -1078,27 +1117,45 @@
         "description": "A single scheduler run outcome, opened when a schedule fires and closed when the mow completes or aborts.",
         "required": ["run_id", "schedule_id", "occurrence_iso", "status"],
         "properties": {
-          "run_id": {"type": "string", "description": "Unique id correlating this run across the dispatch and its lifecycle events."},
+          "run_id": {
+            "type": "string",
+            "description": "Unique id correlating this run across the dispatch and its lifecycle events."
+          },
           "schedule_id": {"type": "string"},
           "name": {"type": "string", "description": "Schedule name at the time of the run."},
-          "occurrence_iso": {"type": "string", "description": "ISO 8601 timestamp of the rrule occurrence that triggered the run."},
+          "occurrence_iso": {
+            "type": "string",
+            "description": "ISO 8601 timestamp of the rrule occurrence that triggered the run."
+          },
           "started_iso": {"type": "string", "description": "ISO 8601 timestamp the run was dispatched."},
-          "ended_iso": {"type": "string", "description": "ISO 8601 timestamp the run was closed. Omitted while still running."},
+          "ended_iso": {
+            "type": "string",
+            "description": "ISO 8601 timestamp the run was closed. Omitted while still running."
+          },
           "area_indices": {"type": "array", "items": {"type": "integer"}},
           "status": {
             "type": "string",
             "enum": ["started", "completed", "aborted", "failed"],
             "description": "Run outcome. 'started' = still running or never closed."
           },
-          "reason": {"type": "string", "description": "Outcome detail, e.g. 'aborted', 'stopped_by_user'. Empty for clean completions."}
+          "reason": {
+            "type": "string",
+            "description": "Outcome detail, e.g. 'aborted', 'stopped_by_user'. Empty for clean completions."
+          }
         }
       },
       "MowingExceptions": {
         "type": "object",
         "description": "When mowing is blocked: explicit blocking_days, the public holidays of the configured country/region, and recurring block_windows (time-of-day ranges).",
         "properties": {
-          "country": {"type": "string", "description": "ISO country code for public-holiday lookup, e.g. 'DE'. Empty disables holiday blocking."},
-          "subdiv": {"type": "string", "description": "Optional subdivision/region code, e.g. 'BY' for Bavaria. Empty for nationwide holidays."},
+          "country": {
+            "type": "string",
+            "description": "ISO country code for public-holiday lookup, e.g. 'DE'. Empty disables holiday blocking."
+          },
+          "subdiv": {
+            "type": "string",
+            "description": "Optional subdivision/region code, e.g. 'BY' for Bavaria. Empty for nationwide holidays."
+          },
           "blocking_days": {
             "type": "array",
             "items": {"type": "string"},
@@ -1116,7 +1173,10 @@
               "required": ["start", "end"],
               "properties": {
                 "start": {"type": "string", "description": "Window start, 'HH:MM' in the exceptions timezone."},
-                "end": {"type": "string", "description": "Window end, 'HH:MM'. An end <= start crosses midnight (e.g. 20:00-08:00)."},
+                "end": {
+                  "type": "string",
+                  "description": "Window end, 'HH:MM'. An end <= start crosses midnight (e.g. 20:00-08:00)."
+                },
                 "days": {
                   "type": "array",
                   "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},

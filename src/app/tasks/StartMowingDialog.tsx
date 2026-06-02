@@ -23,6 +23,7 @@ import {
   Typography,
 } from '@mui/material';
 import {useMemo, useState} from 'react';
+import {useMowDefaults} from '@/hooks/useMowDefaults';
 import MowOverridesFields from './MowParamFields';
 import type {ScheduleOverrides} from './ScheduleEditor';
 
@@ -40,6 +41,7 @@ export default function StartMowingDialog({onClose, defaultAreaIndex}: StartMowi
   const toast = useToast();
   const rpc = useSelectedMower((s) => s?.rpc);
   const areas = useSelectedMower((s) => s?.map.areas ?? []);
+  const {defaults} = useMowDefaults();
 
   const mowingAreas = useMemo(
     () =>
@@ -141,7 +143,7 @@ export default function StartMowingDialog({onClose, defaultAreaIndex}: StartMowi
             <Typography variant="subtitle2" sx={{mb: 1}}>
               Mowing parameters
             </Typography>
-            <MowOverridesFields overrides={overrides} onChange={updateOverrides} />
+            <MowOverridesFields overrides={overrides} onChange={updateOverrides} defaults={defaults} />
           </Box>
 
           <Divider />
@@ -150,11 +152,7 @@ export default function StartMowingDialog({onClose, defaultAreaIndex}: StartMowi
             <FormControlLabel
               sx={{minWidth: 120, m: 0}}
               control={
-                <Switch
-                  size="small"
-                  checked={limitDuration}
-                  onChange={(e) => setLimitDuration(e.target.checked)}
-                />
+                <Switch size="small" checked={limitDuration} onChange={(e) => setLimitDuration(e.target.checked)} />
               }
               label={<Typography variant="body2">Time limit</Typography>}
             />

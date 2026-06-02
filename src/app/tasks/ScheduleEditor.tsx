@@ -34,6 +34,7 @@ import {
   type RruleParts,
   type Weekday,
 } from './rrule';
+import {useMowDefaults} from '@/hooks/useMowDefaults';
 import MowOverridesFields from './MowParamFields';
 import TimeWindowFields from './TimeWindowFields';
 
@@ -55,7 +56,10 @@ export interface ScheduleWindow {
 }
 
 export interface ScheduleOverrides {
+  // Mowing speed (FTC speed_slow); travel_speed_mps is the approach speed
+  // between paths (FTC speed_fast). Both omitted => global FTC defaults.
   speed_mps?: number;
+  travel_speed_mps?: number;
   pattern?: MowPattern;
   angle_deg?: number;
   outline_count?: number;
@@ -116,10 +120,17 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
   );
   const rrule = useMemo(() => partsToRrule(parts), [parts]);
   const mode: ScheduleMode = draft.mode ?? 'time_area';
+  const {defaults} = useMowDefaults();
+  // The wait between passes is persisted in minutes (area_wait_minutes); the
+  // unit toggle only changes how it is entered/shown. Default to hours when the
+  // stored value is a whole number of hours so a "2 h" wait reads back as hours.
+  const [waitUnit, setWaitUnit] = useState<'min' | 'h'>(() => {
+    const m = initial.window?.area_wait_minutes ?? 0;
+    return m > 0 && m % 60 === 0 ? 'h' : 'min';
+  });
 
   const update = (patch: Partial<Schedule>) => setDraft((d) => ({...d, ...patch}));
-  const updateWindow = (patch: Partial<ScheduleWindow>) =>
-    setDraft((d) => ({...d, window: {...d.window, ...patch}}));
+  const updateWindow = (patch: Partial<ScheduleWindow>) => setDraft((d) => ({...d, window: {...d.window, ...patch}}));
   const updateOverrides = (patch: Partial<ScheduleOverrides>) =>
     setDraft((d) => ({...d, overrides: {...d.overrides, ...patch}}));
 
@@ -139,9 +150,7 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
   const canSave =
     !!draft.name &&
     (mode === 'continuous' ||
-      (mode === 'time_window'
-        ? !!draft.window?.start && !!draft.window?.end
-        : !!rrule && draft.duration_minutes > 0));
+      (mode === 'time_window' ? !!draft.window?.start && !!draft.window?.end : !!rrule && draft.duration_minutes > 0));
 
   const handleSave = async () => {
     // Assemble the persisted shape per mode. We only attach the blocks the
@@ -205,7 +214,12 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
 
           {/* Recurrence — time_area only */}
           {mode === 'time_area' && (
-            <RecurrenceBuilder parts={parts} setParts={setParts} duration={draft.duration_minutes} onDuration={(v) => update({duration_minutes: v})} />
+            <RecurrenceBuilder
+              parts={parts}
+              setParts={setParts}
+              duration={draft.duration_minutes}
+              onDuration={(v) => update({duration_minutes: v})}
+            />
           )}
 
           {/* Window — time_window only */}
@@ -217,15 +231,40 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
                 days={windowDays}
                 onChange={updateWindow}
               />
-              <TextField
-                label="Wait between areas (min)"
-                type="number"
-                size="small"
-                value={draft.window?.area_wait_minutes ?? 0}
-                onChange={(e) => updateWindow({area_wait_minutes: clamp(parseInt(e.target.value, 10), 0, 1440)})}
-                inputProps={{min: 0}}
-                sx={{width: 220}}
-              />
+              <Box>
+                <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                  <TextField
+                    label={`Wait between passes (${waitUnit})`}
+                    type="number"
+                    size="small"
+                    value={
+                      waitUnit === 'h'
+                        ? (draft.window?.area_wait_minutes ?? 0) / 60
+                        : (draft.window?.area_wait_minutes ?? 0)
+                    }
+                    onChange={(e) => {
+                      const entered = parseFloat(e.target.value);
+                      const minutes = waitUnit === 'h' ? Math.round(entered * 60) : Math.round(entered);
+                      updateWindow({area_wait_minutes: clamp(minutes, 0, 1440)});
+                    }}
+                    inputProps={waitUnit === 'h' ? {min: 0, max: 24, step: 0.5} : {min: 0, max: 1440, step: 1}}
+                    sx={{width: 200}}
+                  />
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={waitUnit}
+                    onChange={(_, v: 'min' | 'h' | null) => v && setWaitUnit(v)}
+                  >
+                    <ToggleButton value="min">min</ToggleButton>
+                    <ToggleButton value="h">h</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 0.5}}>
+                  After every area has been mowed, wait this long before mowing the whole set again — repeating while
+                  the window is open. 0 = mow continuously without a pause.
+                </Typography>
+              </Box>
             </Box>
           )}
 
@@ -281,7 +320,7 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
             <Typography variant="subtitle2" sx={{mb: 1}}>
               Mowing parameters
             </Typography>
-            <MowOverridesFields overrides={draft.overrides} onChange={updateOverrides} />
+            <MowOverridesFields overrides={draft.overrides} onChange={updateOverrides} defaults={defaults} />
           </Box>
 
           <Divider />

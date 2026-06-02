@@ -55,18 +55,26 @@ interface SessionMeta {
   duration_s?: number;
 }
 
-const ALL_METRICS: MetricId[] = [
-  'gps',
-  'wifi',
-  'imu',
-  'mow_current',
-  'mow_temp',
-  'esc_temp',
-  'battery',
-  'composite',
-];
+const ALL_METRICS: MetricId[] = ['gps', 'wifi', 'imu', 'mow_current', 'mow_temp', 'esc_temp', 'battery', 'composite'];
 
-const INITIAL_STRIDE = 4;
+// Target sample count per session after decimation. A heatmap stays visually
+// faithful at a few thousand points, while the payload (~15 numeric fields per
+// sample) stays well under ~0.5 MB — small enough to come back over MQTT inside
+// the request timeout even for multi-hour mows. The per-session stride is
+// derived from this and the recorded sample_count so a 30 min mow keeps full
+// resolution while a 3 h mow is decimated rather than timing out.
+const TARGET_POINTS = 4000;
+
+// get_session for a large session can take noticeably longer than the default
+// client timeout: the backend streams the whole JSONL file before decimating
+// and the payload is still hundreds of KB. Give it a generous ceiling.
+const SESSION_FETCH_TIMEOUT_MS = 60_000;
+
+// Pick a decimation stride that brings sample_count down to ~TARGET_POINTS.
+function strideFor(sampleCount: number | undefined): number {
+  if (!sampleCount || sampleCount <= TARGET_POINTS) return 1;
+  return Math.ceil(sampleCount / TARGET_POINTS);
+}
 
 export default function HeatmapPage() {
   const theme = useTheme();
@@ -118,7 +126,7 @@ export default function HeatmapPage() {
   }, [hasCap, rpc, sessions, loadingSessions, refreshSessions]);
 
   const fetchSamples = useCallback(
-    async (id: string) => {
+    async (id: string, sampleCount?: number) => {
       if (!rpc) return;
       if (samplesRef.current!.has(id)) return;
       setLoadingSamples((prev) => new Set(prev).add(id));
@@ -129,7 +137,10 @@ export default function HeatmapPage() {
         return next;
       });
       try {
-        const res = (await rpc.telemetry.get_session({id, stride: INITIAL_STRIDE})) as unknown as {
+        // Decimate large sessions so the payload stays small and the call
+        // returns within the timeout; small sessions are sent in full.
+        const stride = strideFor(sampleCount);
+        const res = (await rpc.telemetry.get_session({id, stride}, SESSION_FETCH_TIMEOUT_MS)) as unknown as {
           samples?: Sample[];
         };
         samplesRef.current!.set(id, res?.samples ?? []);
@@ -147,14 +158,14 @@ export default function HeatmapPage() {
     [rpc],
   );
 
-  const toggleSession = (id: string) => {
+  const toggleSession = (id: string, sampleCount?: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
       } else {
         next.add(id);
-        fetchSamples(id);
+        fetchSamples(id, sampleCount);
       }
       return next;
     });
@@ -198,9 +209,8 @@ export default function HeatmapPage() {
         <PageHeader title="Heatmap" subtitle="Replay mowing telemetry as colour-coded layers" />
         <PageContent>
           <Alert severity="info" sx={{mt: 2}}>
-            Telemetry RPCs not available — backend may be outdated. Needs an{' '}
-            <code>xbot_monitoring</code> build with <code>telemetry.list_sessions</code> /{' '}
-            <code>telemetry.get_session</code>.
+            Telemetry RPCs not available — backend may be outdated. Needs an <code>xbot_monitoring</code> build with{' '}
+            <code>telemetry.list_sessions</code> / <code>telemetry.get_session</code>.
           </Alert>
         </PageContent>
       </Page>
@@ -249,11 +259,7 @@ export default function HeatmapPage() {
           No telemetry sessions recorded yet.
         </Typography>
       )}
-      <List
-        dense
-        disablePadding
-        sx={{maxHeight: {xs: 'unset', md: 'calc(100vh - 320px)'}, overflow: 'auto'}}
-      >
+      <List dense disablePadding sx={{maxHeight: {xs: 'unset', md: 'calc(100vh - 320px)'}, overflow: 'auto'}}>
         {sessions?.map((s) => {
           const err = sampleErrors[s.id];
           const secondary = loadingSamples.has(s.id) ? (
@@ -264,7 +270,7 @@ export default function HeatmapPage() {
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
-                  fetchSamples(s.id);
+                  fetchSamples(s.id, s.sample_count);
                 }}
                 aria-label="Retry loading session samples"
               >
@@ -274,7 +280,7 @@ export default function HeatmapPage() {
           ) : null;
           return (
             <ListItem key={s.id} disablePadding secondaryAction={secondary}>
-              <ListItemButton dense onClick={() => toggleSession(s.id)}>
+              <ListItemButton dense onClick={() => toggleSession(s.id, s.sample_count)}>
                 <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
                 <ListItemText
                   primary={new Date(s.start_ts * 1000).toLocaleString()}
@@ -450,9 +456,7 @@ export default function HeatmapPage() {
                       samples={arr}
                       metricId={metric}
                       datum={datum}
-                      onHover={(idx) =>
-                        setHoverIdxBySession((prev) => ({...prev, [id]: idx}))
-                      }
+                      onHover={(idx) => setHoverIdxBySession((prev) => ({...prev, [id]: idx}))}
                     />
                   );
                 })}
@@ -484,14 +488,23 @@ export default function HeatmapPage() {
                     }}
                   >
                     <div>{new Date(s.ts * 1000).toLocaleTimeString()}</div>
-                    <div style={{opacity: 0.7}}>x={s.x.toFixed(2)}, y={s.y.toFixed(2)}</div>
+                    <div style={{opacity: 0.7}}>
+                      x={s.x.toFixed(2)}, y={s.y.toFixed(2)}
+                    </div>
                     {s.gps_fix_type !== undefined && (
-                      <div>GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · PDOP {s.gps_pdop?.toFixed(2) ?? '—'}</div>
+                      <div>
+                        GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · PDOP{' '}
+                        {s.gps_pdop?.toFixed(2) ?? '—'}
+                      </div>
                     )}
                     {(s.wifi_dbm !== undefined || s.wifi_q !== undefined) && (
-                      <div>WLAN: {s.wifi_dbm ?? '—'}dBm ({((s.wifi_q ?? 0) * 100).toFixed(0)}%)</div>
+                      <div>
+                        WLAN: {s.wifi_dbm ?? '—'}dBm ({((s.wifi_q ?? 0) * 100).toFixed(0)}%)
+                      </div>
                     )}
-                    {s.om_mow_motor_current !== undefined && <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>}
+                    {s.om_mow_motor_current !== undefined && (
+                      <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>
+                    )}
                     {s.om_mow_motor_temp !== undefined && <div>Mow temp: {s.om_mow_motor_temp.toFixed(1)}°C</div>}
                     {(s.om_left_esc_temp !== undefined || s.om_right_esc_temp !== undefined) && (
                       <div>
@@ -519,7 +532,9 @@ export default function HeatmapPage() {
                     color="text.secondary"
                     sx={{bgcolor: theme.palette.background.paper, px: 2, py: 1, borderRadius: 1, textAlign: 'center'}}
                   >
-                    {isMobile ? 'Tap “Sessions” to pick one or more.' : 'Pick one or more sessions to render their heatmap.'}
+                    {isMobile
+                      ? 'Tap “Sessions” to pick one or more.'
+                      : 'Pick one or more sessions to render their heatmap.'}
                   </Typography>
                 </Box>
               )}

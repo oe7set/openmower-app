@@ -13,6 +13,12 @@ import type {AreaProps} from '@/stores/schemas';
 // the area, exactly like the per-run overrides behave).
 export interface AreaMowOverrides {
   speed_mps?: number;
+  // Travel/approach speed (FTC speed_fast). Per-run only — it is intentionally
+  // NOT part of PARAM_KEYS below and is never written to an area's stored
+  // properties, so the per-area settings dialog does not expose it. It rides
+  // along here only so the shared MowParamRows component (driven on this
+  // superset) can render the per-run "Travel speed" override.
+  travel_speed_mps?: number;
   pattern?: MowPattern;
   angle_deg?: number;
   outline_count?: number;
