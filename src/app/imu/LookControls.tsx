@@ -12,6 +12,7 @@ import {Close as CloseIcon, RestartAlt as ResetIcon, Tune as TuneIcon} from '@mu
 import {
   Box,
   Collapse,
+  Divider,
   IconButton,
   MenuItem,
   Paper,
@@ -33,6 +34,41 @@ const TONE_OPTIONS: {value: ToneMappingMode; label: string}[] = [
   {value: 'none', label: 'None'},
 ];
 
+// One axis row for the model-orientation offsets: a labelled slider plus a
+// narrow numeric field, kept in sync. Both feed the same store setter, which
+// clamps to [-180, 180] — so we don't clamp here.
+function OffsetRow({label, value, onChange}: {label: string; value: number; onChange: (v: number) => void}) {
+  return (
+    <Stack direction="row" alignItems="center" spacing={1}>
+      <Typography variant="caption" color="text.secondary" sx={{width: 12}}>
+        {label}
+      </Typography>
+      <Slider
+        value={value}
+        onChange={(_, v) => typeof v === 'number' && onChange(v)}
+        min={-180}
+        max={180}
+        step={1}
+        size="small"
+        valueLabelDisplay="auto"
+        valueLabelFormat={(v) => `${v}°`}
+        sx={{flex: 1}}
+      />
+      <TextField
+        size="small"
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (!Number.isNaN(v)) onChange(v);
+        }}
+        slotProps={{htmlInput: {min: -180, max: 180, step: 1}}}
+        sx={{width: 64}}
+      />
+    </Stack>
+  );
+}
+
 export default function LookControls() {
   const [open, setOpen] = useState(false);
   const toneMapping = useUiStore((s) => s.imuToneMapping);
@@ -42,6 +78,13 @@ export default function LookControls() {
   const envIntensity = useUiStore((s) => s.imuEnvIntensity);
   const setEnvIntensity = useUiStore((s) => s.setImuEnvIntensity);
   const resetLook = useUiStore((s) => s.resetImuLook);
+  const offsetX = useUiStore((s) => s.imuModelOffsetX);
+  const offsetY = useUiStore((s) => s.imuModelOffsetY);
+  const offsetZ = useUiStore((s) => s.imuModelOffsetZ);
+  const setOffsetX = useUiStore((s) => s.setImuModelOffsetX);
+  const setOffsetY = useUiStore((s) => s.setImuModelOffsetY);
+  const setOffsetZ = useUiStore((s) => s.setImuModelOffsetZ);
+  const resetOffset = useUiStore((s) => s.resetImuModelOffset);
 
   return (
     <Box sx={{position: 'absolute', top: 8, right: 8, zIndex: 2}}>
@@ -63,7 +106,7 @@ export default function LookControls() {
       )}
 
       <Collapse in={open} unmountOnExit>
-        <Paper elevation={4} sx={{p: 1.5, width: 240}}>
+        <Paper elevation={4} sx={{p: 1.5, width: 260}}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{mb: 1}}>
             <Typography variant="subtitle2" fontWeight={600}>
               Lighting & look
@@ -123,6 +166,24 @@ export default function LookControls() {
             valueLabelDisplay="auto"
             valueLabelFormat={(v) => v.toFixed(2)}
           />
+
+          <Divider sx={{my: 1.5}} />
+
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{mb: 0.5}}>
+            <Typography variant="caption" color="text.secondary">
+              Model orientation
+            </Typography>
+            <Tooltip title="Reset orientation offsets">
+              <IconButton size="small" onClick={resetOffset} aria-label="Reset model orientation offsets">
+                <ResetIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <Stack spacing={0.5}>
+            <OffsetRow label="X" value={offsetX} onChange={setOffsetX} />
+            <OffsetRow label="Y" value={offsetY} onChange={setOffsetY} />
+            <OffsetRow label="Z" value={offsetZ} onChange={setOffsetZ} />
+          </Stack>
         </Paper>
       </Collapse>
     </Box>

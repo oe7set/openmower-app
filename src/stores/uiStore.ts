@@ -78,6 +78,14 @@ interface UiStore {
   /** scene.environmentIntensity (IBL strength) for the IMU viewer. */
   imuEnvIntensity: number;
 
+  // Static orientation offsets (degrees) applied to the IMU viewer's 3D model
+  // on top of the live IMU rotation. The Tango GLB (3dsMax→FBX→Blender→glTF
+  // pipeline) isn't guaranteed axis-aligned with the robot body, so these let
+  // the user re-square a mis-oriented model. All 0 = no correction.
+  imuModelOffsetX: number;
+  imuModelOffsetY: number;
+  imuModelOffsetZ: number;
+
   setThemeMode: (mode: ThemeMode) => void;
   setUnits: (units: Units) => void;
   setMapStyle: (style: MapStyle) => void;
@@ -109,6 +117,12 @@ interface UiStore {
   setImuEnvIntensity: (v: number) => void;
   /** Restore the IMU viewer's look controls to their shipped defaults. */
   resetImuLook: () => void;
+
+  setImuModelOffsetX: (v: number) => void;
+  setImuModelOffsetY: (v: number) => void;
+  setImuModelOffsetZ: (v: number) => void;
+  /** Reset the IMU model orientation offsets to zero (no correction). */
+  resetImuModelOffset: () => void;
 }
 
 // Shipped defaults for the IMU viewer look. Neutral (Khronos PBR Neutral) is the
@@ -119,6 +133,15 @@ const IMU_LOOK_DEFAULTS = {
   imuToneMapping: 'neutral' as ToneMappingMode,
   imuExposure: 1.0,
   imuEnvIntensity: 0.5,
+};
+
+// Shipped defaults for the IMU model orientation offsets. All 0 = the model is
+// shown exactly as the live IMU quaternion (plus the fixed ROS→three adapter)
+// orients it, with no extra correction.
+const IMU_MODEL_OFFSET_DEFAULTS = {
+  imuModelOffsetX: 0,
+  imuModelOffsetY: 0,
+  imuModelOffsetZ: 0,
 };
 
 const APPEARANCE_DEFAULTS = {
@@ -150,6 +173,7 @@ export const useUiStore = create<UiStore>()(
       teleopSpeedCap: 0.6,
       ...APPEARANCE_DEFAULTS,
       ...IMU_LOOK_DEFAULTS,
+      ...IMU_MODEL_OFFSET_DEFAULTS,
       setThemeMode: (themeMode) => set({themeMode}),
       setUnits: (units) => set({units}),
       setMapStyle: (mapStyle) => set({mapStyle}),
@@ -185,17 +209,23 @@ export const useUiStore = create<UiStore>()(
       setImuExposure: (imuExposure) => set({imuExposure: Math.max(0.2, Math.min(2, imuExposure))}),
       setImuEnvIntensity: (imuEnvIntensity) => set({imuEnvIntensity: Math.max(0, Math.min(2, imuEnvIntensity))}),
       resetImuLook: () => set({...IMU_LOOK_DEFAULTS}),
+      setImuModelOffsetX: (imuModelOffsetX) => set({imuModelOffsetX: Math.max(-180, Math.min(180, imuModelOffsetX))}),
+      setImuModelOffsetY: (imuModelOffsetY) => set({imuModelOffsetY: Math.max(-180, Math.min(180, imuModelOffsetY))}),
+      setImuModelOffsetZ: (imuModelOffsetZ) => set({imuModelOffsetZ: Math.max(-180, Math.min(180, imuModelOffsetZ))}),
+      resetImuModelOffset: () => set({...IMU_MODEL_OFFSET_DEFAULTS}),
     }),
     {
       name: 'openmower-ui',
-      version: 4,
+      version: 5,
       // v0 used 'white' as the plain-background style; rename it on load.
       // v1 → v2 introduces the appearance-prefs block; v2 → v3 adds the
       // batch-2 appearance keys (accent, font scale, radius, motion, page
       // header, mower colours). v3 → v4 prepends the new __menu__/__quick__
       // action items to bottomBarItems so existing users keep their Menu
-      // trigger after the upgrade. Missing keys fall through to the store
-      // factory's defaults.
+      // trigger after the upgrade. v4 → v5 adds the IMU model orientation
+      // offsets (imuModelOffsetX/Y/Z) — no migration logic needed, the missing
+      // keys fall through to the store factory's defaults (all 0). Missing keys
+      // fall through to the store factory's defaults.
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version < 1 && state?.mapStyle === 'white') {

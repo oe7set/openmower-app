@@ -1,6 +1,6 @@
 'use client';
 
-import {writeQuaternionToThree} from '@/lib/quaternion';
+import {degToRad, writeQuaternionToThree} from '@/lib/quaternion';
 import {getLiveImuSample, useImuStore} from '@/stores/imuStore';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {ToneMappingMode, useUiStore} from '@/stores/uiStore';
@@ -50,8 +50,15 @@ interface MowerModelProps {
 
 function MowerModel({glbAvailable}: MowerModelProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const offsetRef = useRef<THREE.Group>(null);
   const targetRef = useRef(new THREE.Quaternion());
   const mowerId = useSelectedMower((s) => s?.id);
+  // Static user offsets (degrees) re-squaring a mis-oriented model. Applied to
+  // the offset group nested inside the live-orientation group, so the offset
+  // moves rigidly with the mesh as the robot tilts.
+  const offsetX = useUiStore((s) => s.imuModelOffsetX);
+  const offsetY = useUiStore((s) => s.imuModelOffsetY);
+  const offsetZ = useUiStore((s) => s.imuModelOffsetZ);
   // invalidate() requests a single render in frameloop="demand" mode. We use
   // it both to drive the slerp until it converges and to wake the loop when
   // new IMU samples arrive — see useFrame / the wakeup effect below.
@@ -107,17 +114,30 @@ function MowerModel({glbAvailable}: MowerModelProps) {
     return useImuStore.subscribe(() => invalidate());
   }, [invalidate]);
 
+  // Apply the static orientation offsets imperatively, mirroring ToneController.
+  // In frameloop="demand" the only wakeup is the IMU-sample subscription above,
+  // which doesn't fire while the robot is still — so dragging a slider needs its
+  // own invalidate() to render the new orientation.
+  useEffect(() => {
+    const o = offsetRef.current;
+    if (!o) return;
+    o.rotation.set(degToRad(offsetX), degToRad(offsetY), degToRad(offsetZ));
+    invalidate();
+  }, [offsetX, offsetY, offsetZ, invalidate]);
+
   return (
     <RosToThreeAdapter>
       <group ref={groupRef}>
-        <group visible={!gltfReady}>
-          <ProceduralMower />
+        <group ref={offsetRef}>
+          <group visible={!gltfReady}>
+            <ProceduralMower />
+          </group>
+          {glbAvailable && (
+            <Suspense fallback={null}>
+              <GltfMower onReady={() => setGltfReady(true)} />
+            </Suspense>
+          )}
         </group>
-        {glbAvailable && (
-          <Suspense fallback={null}>
-            <GltfMower onReady={() => setGltfReady(true)} />
-          </Suspense>
-        )}
       </group>
     </RosToThreeAdapter>
   );
