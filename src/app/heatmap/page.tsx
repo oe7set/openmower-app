@@ -57,23 +57,29 @@ interface SessionMeta {
 
 const ALL_METRICS: MetricId[] = ['gps', 'wifi', 'imu', 'mow_current', 'mow_temp', 'esc_temp', 'battery', 'composite'];
 
-// Target sample count per session after decimation. A heatmap stays visually
-// faithful at a few thousand points, while the payload (~15 numeric fields per
-// sample) stays well under ~0.5 MB — small enough to come back over MQTT inside
-// the request timeout even for multi-hour mows. The per-session stride is
-// derived from this and the recorded sample_count so a 30 min mow keeps full
-// resolution while a 3 h mow is decimated rather than timing out.
-const TARGET_POINTS = 4000;
+// Decimation budget. The recorder logs at 4 Hz, so the previous fixed stride=4
+// returned ~1 point/second — a ~30 min mow came back as ~1800 points (~100 KB
+// over MQTT) and rendered/loaded fine. The cost that actually hurts is the
+// RPC *payload* (a single JSON publish over the WebSocket broker), not the
+// timeout, so we cap returned points low and — crucially — never request a
+// session at a finer resolution than that old baseline.
+//
+// strideFor() therefore clamps to MIN_STRIDE: a session is decimated to at most
+// ~TARGET_POINTS points, but never denser than 1 point/second, so small/medium
+// sessions transfer exactly as cheaply as before while multi-hour mows shrink
+// instead of blowing the payload up.
+const TARGET_POINTS = 1200;
+const MIN_STRIDE = 4;
 
-// get_session for a large session can take noticeably longer than the default
-// client timeout: the backend streams the whole JSONL file before decimating
-// and the payload is still hundreds of KB. Give it a generous ceiling.
-const SESSION_FETCH_TIMEOUT_MS = 60_000;
+// Payloads are small with the stride above, so a moderate timeout is enough; a
+// too-long ceiling only makes a genuinely failed call hang longer.
+const SESSION_FETCH_TIMEOUT_MS = 30_000;
 
-// Pick a decimation stride that brings sample_count down to ~TARGET_POINTS.
+// Pick a decimation stride: never finer than the 4 Hz→1 Hz baseline, and
+// coarser still for long sessions so the response stays ~TARGET_POINTS points.
 function strideFor(sampleCount: number | undefined): number {
-  if (!sampleCount || sampleCount <= TARGET_POINTS) return 1;
-  return Math.ceil(sampleCount / TARGET_POINTS);
+  if (!sampleCount) return MIN_STRIDE;
+  return Math.max(MIN_STRIDE, Math.ceil(sampleCount / TARGET_POINTS));
 }
 
 export default function HeatmapPage() {
