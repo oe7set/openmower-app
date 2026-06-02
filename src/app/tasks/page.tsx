@@ -24,6 +24,7 @@ import {
   Chip,
   CircularProgress,
   IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
@@ -39,18 +40,30 @@ import CalendarView from './CalendarView';
 import ExceptionsManager from './ExceptionsManager';
 import RunHistoryDrawer from './RunHistoryDrawer';
 import StartMowingDialog from './StartMowingDialog';
-import {DEFAULT_RRULE_PARTS, describeRrule, partsToRrule} from './rrule';
+import {DEFAULT_RRULE_PARTS, describeRrule, partsToRrule, WEEKDAYS} from './rrule';
 import {describeBlockWindow} from './blockWindows';
 import type {BlockedDay, Holiday, MowingExceptions, ScheduleRun} from './types';
 import {detectTimezone} from './timezone';
+import ConfirmDialog from './ConfirmDialog';
+import {usePersistentState} from './useCalendarState';
 
-function emptySchedule(): Schedule {
+// Build a blank schedule. When `at` is given (quick-create from clicking a
+// calendar slot), prefill the recurrence to that weekday and time so the editor
+// opens with sensible defaults the user can tweak.
+function emptySchedule(at?: Date): Schedule {
+  const parts = {...DEFAULT_RRULE_PARTS};
+  if (at) {
+    const weekday = WEEKDAYS[(at.getDay() + 6) % 7].key; // 0=Mon..6=Sun
+    parts.byDays = [weekday];
+    parts.hour = at.getHours();
+    parts.minute = at.getMinutes();
+  }
   return {
     name: '',
     enabled: true,
     mode: 'time_area',
     areas: [],
-    rrule: partsToRrule(DEFAULT_RRULE_PARTS),
+    rrule: partsToRrule(parts),
     duration_minutes: 60,
     timezone: detectTimezone(),
   };
@@ -86,6 +99,16 @@ function formatNextRun(iso: string | null | undefined): string {
   });
 }
 
+// Replace a schedule with the same id, or append it when it's new (no id yet
+// or an id we haven't seen). Used for optimistic list updates after upsert.
+function upsertSchedule(list: Schedule[], saved: Schedule): Schedule[] {
+  const idx = saved.id ? list.findIndex((s) => s.id === saved.id) : -1;
+  if (idx === -1) return [...list, saved];
+  const next = list.slice();
+  next[idx] = saved;
+  return next;
+}
+
 type ViewMode = 'list' | 'calendar';
 
 export default function TasksPage() {
@@ -93,7 +116,11 @@ export default function TasksPage() {
   const toast = useToast();
   const rpc = useSelectedMower((s) => s?.rpc);
 
+  // `loading` covers the first load (shows the full spinner); `refreshing` is
+  // every subsequent reload and only drives a thin top progress bar so the
+  // calendar/list stays visible and doesn't flash empty.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [runs, setRuns] = useState<ScheduleRun[]>([]);
@@ -102,43 +129,55 @@ export default function TasksPage() {
   const [editingExceptions, setEditingExceptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
-  const [view, setView] = useState<ViewMode>('calendar');
+  const [view, setView] = usePersistentState<ViewMode>('om.tasks.view', 'calendar');
+  const [pendingDelete, setPendingDelete] = useState<Schedule | null>(null);
   // Public holidays resolved from the backend, keyed by ISO 'YYYY-MM-DD'. The
   // calendar drives which years we fetch via onRangeChange; we keep a set of
   // already-requested years so navigating months doesn't refetch endlessly.
   const [holidays, setHolidays] = useState<Map<string, string>>(new Map());
   const fetchedYears = useRef<Set<number>>(new Set());
+  const hasLoaded = useRef(false);
+  // The country/region the holiday cache was built for. Only when this changes
+  // do we drop the cache — otherwise a routine refresh keeps the resolved names
+  // and the calendar doesn't flicker.
+  const holidayRegion = useRef<string>('');
 
   const refresh = useCallback(async () => {
     if (!rpc) return;
-    setLoading(true);
+    // First load gets the full spinner; later reloads only the top bar.
+    if (hasLoaded.current) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
       // schedule.list is the only call that must succeed; history/exceptions
-      // are best-effort enrichers added by newer scheduler builds.
-      const result = (await rpc.schedule.list()) as unknown as Schedule[];
-      setSchedules(result ?? []);
-      try {
-        const hist = (await rpc.schedule.history({limit: 200})) as unknown as ScheduleRun[];
-        setRuns(hist ?? []);
-      } catch {
-        setRuns([]);
+      // are best-effort enrichers added by newer scheduler builds. Fire them in
+      // parallel so the total latency is the slowest call, not their sum.
+      const [listRes, histRes, excRes] = await Promise.allSettled([
+        rpc.schedule.list() as unknown as Promise<Schedule[]>,
+        rpc.schedule.history({limit: 200}) as unknown as Promise<ScheduleRun[]>,
+        rpc.exceptions.get() as unknown as Promise<MowingExceptions>,
+      ]);
+      if (listRes.status === 'rejected') throw listRes.reason;
+      setSchedules(listRes.value ?? []);
+      setRuns(histRes.status === 'fulfilled' ? (histRes.value ?? []) : []);
+      const exc = excRes.status === 'fulfilled' ? (excRes.value ?? {}) : {};
+      setExceptions(exc);
+      // Drop the holiday cache only when the configured country/region actually
+      // changed; a routine refresh keeps the resolved names so the calendar
+      // doesn't flash blank while it refetches.
+      const region = `${exc.country ?? ''}/${exc.subdiv ?? ''}`;
+      if (region !== holidayRegion.current) {
+        holidayRegion.current = region;
+        fetchedYears.current = new Set();
+        setHolidays(new Map());
       }
-      try {
-        const exc = (await rpc.exceptions.get()) as unknown as MowingExceptions;
-        setExceptions(exc ?? {});
-      } catch {
-        setExceptions({});
-      }
-      // The configured country/region may have changed; drop the holiday cache
-      // so the calendar refetches names for the visible range.
-      fetchedYears.current = new Set();
-      setHolidays(new Map());
+      hasLoaded.current = true;
     } catch (e) {
       setError((e as Error).message);
       setSchedules([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [rpc]);
 
@@ -179,47 +218,68 @@ export default function TasksPage() {
 
   const handleSave = async (schedule: Schedule) => {
     if (!rpc) return;
+    const prev = schedules;
     try {
-      await rpc.schedule.upsert({schedule: schedule as never});
+      // upsert returns the persisted schedule (with a server-assigned id on
+      // create); merge that into local state so the calendar updates without
+      // waiting for the reconcile refresh.
+      const saved = ((await rpc.schedule.upsert({schedule: schedule as never})) as unknown as Schedule) ?? schedule;
+      setSchedules((cur) => upsertSchedule(cur, saved));
       toast.success(`Saved ${schedule.name}`);
       setEditing(null);
+      // Reconcile read-only fields (next_run, last_*) in the background.
       refresh();
     } catch (e) {
+      setSchedules(prev);
       toast.error(`Save failed: ${(e as Error).message}`);
+      throw e; // keep the editor open + spinner cleared by its own catch
     }
   };
 
   const handleToggle = async (schedule: Schedule) => {
     if (!rpc || !schedule.id) return;
+    const prev = schedules;
+    const next = {...schedule, enabled: !schedule.enabled};
+    // Flip immediately, roll back on failure.
+    setSchedules((cur) => upsertSchedule(cur, next));
     try {
-      await rpc.schedule.upsert({schedule: {...schedule, enabled: !schedule.enabled} as never});
+      await rpc.schedule.upsert({schedule: next as never});
       refresh();
     } catch (e) {
+      setSchedules(prev);
       toast.error(`Toggle failed: ${(e as Error).message}`);
     }
   };
 
   const handleDelete = async (schedule: Schedule) => {
     if (!rpc || !schedule.id) return;
-    if (!window.confirm(`Delete schedule "${schedule.name}"?`)) return;
+    const prev = schedules;
+    setPendingDelete(null);
+    setSchedules((cur) => cur.filter((s) => s.id !== schedule.id));
     try {
       await rpc.schedule.delete({id: schedule.id});
       toast.success('Deleted');
       refresh();
     } catch (e) {
+      setSchedules(prev);
       toast.error(`Delete failed: ${(e as Error).message}`);
     }
   };
 
   const handleSaveExceptions = async (e: MowingExceptions) => {
     if (!rpc) return;
+    const prev = exceptions;
     try {
       await rpc.exceptions.set({exceptions: e as never});
+      // Apply immediately so the calendar's block tints/windows update at once.
+      setExceptions(e);
       toast.success('Saved exceptions');
       setEditingExceptions(false);
       refresh();
     } catch (err) {
+      setExceptions(prev);
       toast.error(`Save failed: ${(err as Error).message}`);
+      throw err;
     }
   };
 
@@ -335,19 +395,48 @@ export default function TasksPage() {
               </Box>
             </Box>
 
+            {/* Background reloads keep the content visible behind a thin bar so
+                the calendar/list never flashes empty mid-refresh. */}
+            <Box sx={{height: 4, mb: 1}}>{refreshing && <LinearProgress />}</Box>
+
             {loading ? (
               <Box sx={{display: 'flex', justifyContent: 'center', py: 4}}>
                 <CircularProgress />
               </Box>
             ) : view === 'calendar' ? (
-              <CalendarView
-                schedules={schedules}
-                runs={runs}
-                blockedDays={blockedDays}
-                blockWindows={exceptions.block_windows ?? []}
-                onSelectSchedule={setEditing}
-                onRangeChange={loadHolidays}
-              />
+              <>
+                {schedules.length === 0 && (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                      mb: 1.5,
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      backgroundColor: theme.palette.action.hover,
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      No schedules yet — pick a day or time slot below, or click New to create one.
+                    </Typography>
+                    <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setEditing(emptySchedule())}>
+                      New
+                    </Button>
+                  </Box>
+                )}
+                <CalendarView
+                  schedules={schedules}
+                  runs={runs}
+                  blockedDays={blockedDays}
+                  blockWindows={exceptions.block_windows ?? []}
+                  onSelectSchedule={setEditing}
+                  onCreateAt={(at) => setEditing(emptySchedule(at))}
+                  onRangeChange={loadHolidays}
+                />
+              </>
             ) : schedules.length === 0 && (exceptions.block_windows ?? []).length === 0 && upcomingBlocks.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{py: 2}}>
                 No schedules yet. Click <strong>New</strong> to create one.
@@ -419,7 +508,7 @@ export default function TasksPage() {
                         <Button size="small" onClick={() => setEditing(s)}>
                           Edit
                         </Button>
-                        <IconButton color="error" onClick={() => handleDelete(s)} aria-label="Delete">
+                        <IconButton color="error" onClick={() => setPendingDelete(s)} aria-label="Delete">
                           <DeleteIcon />
                         </IconButton>
                       </Box>
@@ -483,6 +572,21 @@ export default function TasksPage() {
         )}
         {startOpen && <StartMowingDialog onClose={() => setStartOpen(false)} />}
         <RunHistoryDrawer open={historyOpen} runs={runs} onClose={() => setHistoryOpen(false)} />
+        <ConfirmDialog
+          open={pendingDelete !== null}
+          title="Delete schedule?"
+          message={
+            <>
+              This removes <strong>{pendingDelete?.name || '(unnamed)'}</strong> and its recurrence. This cannot be
+              undone.
+            </>
+          }
+          confirmLabel="Delete"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            if (pendingDelete) return handleDelete(pendingDelete);
+          }}
+        />
       </PageContent>
     </Page>
   );

@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,7 +24,8 @@ import {describeBlockWindow} from './blockWindows';
 interface ExceptionsManagerProps {
   initial: MowingExceptions;
   onCancel: () => void;
-  onSave: (e: MowingExceptions) => void;
+  // May be async; rejecting keeps the dialog open so the user can retry.
+  onSave: (e: MowingExceptions) => void | Promise<void>;
 }
 
 // A small, country-agnostic editor. The country/subdiv are free-text codes
@@ -37,6 +39,7 @@ export default function ExceptionsManager({initial, onCancel, onSave}: Exception
   const [days, setDays] = useState<string[]>(initial.blocking_days ?? []);
   const [newDay, setNewDay] = useState('');
   const [windows, setWindows] = useState<BlockWindow[]>(initial.block_windows ?? []);
+  const [saving, setSaving] = useState(false);
 
   const addDay = () => {
     if (!newDay) return;
@@ -58,23 +61,30 @@ export default function ExceptionsManager({initial, onCancel, onSave}: Exception
     setWindows(windows.filter((_, i) => i !== idx));
   };
 
-  const handleSave = () => {
-    onSave({
-      country: country.trim(),
-      subdiv: subdiv.trim(),
-      blocking_days: days,
-      // Persist the block-window times against a concrete zone so the backend
-      // interprets them in the owner's local time, not UTC.
-      timezone: initial.timezone || detectTimezone(),
-      block_windows: windows
-        .filter((w) => w.start && w.end)
-        // Drop an empty days array so "every day" stays the implicit default.
-        .map((w) => (w.days && w.days.length > 0 ? w : {start: w.start, end: w.end})),
-    });
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave({
+        country: country.trim(),
+        subdiv: subdiv.trim(),
+        blocking_days: days,
+        // Persist the block-window times against a concrete zone so the backend
+        // interprets them in the owner's local time, not UTC.
+        timezone: initial.timezone || detectTimezone(),
+        block_windows: windows
+          .filter((w) => w.start && w.end)
+          // Drop an empty days array so "every day" stays the implicit default.
+          .map((w) => (w.days && w.days.length > 0 ? w : {start: w.start, end: w.end})),
+      });
+      // Success closes the dialog from the parent; failure rejects and we
+      // re-enable the form for a retry.
+    } catch {
+      setSaving(false);
+    }
   };
 
   return (
-    <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
+    <Dialog open onClose={saving ? undefined : onCancel} fullWidth maxWidth="sm">
       <DialogTitle>Blocking days, holidays &amp; windows</DialogTitle>
       <DialogContent>
         <Box sx={{display: 'flex', flexDirection: 'column', gap: 2.5, mt: 1}}>
@@ -194,8 +204,15 @@ export default function ExceptionsManager({initial, onCancel, onSave}: Exception
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave}>
+        <Button onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={saving}
+          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+        >
           Save
         </Button>
       </DialogActions>

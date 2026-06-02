@@ -1,8 +1,8 @@
 'use client';
 
-import {alpha, Box, IconButton, Stack, ToggleButton, ToggleButtonGroup, Typography, useTheme} from '@mui/material';
+import {alpha, Box, IconButton, ToggleButton, ToggleButtonGroup, Typography, useTheme} from '@mui/material';
 import type {Theme} from '@mui/material/styles';
-import {Block as BlockIcon, ChevronLeft, ChevronRight, Warning as WarningIcon} from '@mui/icons-material';
+import {ChevronLeft, ChevronRight} from '@mui/icons-material';
 import {
   addDays,
   addMonths,
@@ -20,12 +20,13 @@ import {
   startOfWeek,
   startOfYear,
 } from 'date-fns';
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo} from 'react';
 import {expandOccurrences} from './rrule';
-import {isBlockWindowActive} from './blockWindows';
 import type {Schedule} from './ScheduleEditor';
 import type {BlockedDay, BlockWindow, ScheduleRun} from './types';
 import DayCell, {type DayAppointment} from './DayCell';
+import DayTimeline from './DayTimeline';
+import {usePersistentState, dateCodec} from './useCalendarState';
 
 type CalView = 'day' | 'week' | 'month' | 'year';
 
@@ -38,6 +39,9 @@ interface CalendarViewProps {
   // Recurring time-of-day block windows (global), for the day-view banner.
   blockWindows: BlockWindow[];
   onSelectSchedule: (s: Schedule) => void;
+  // Quick-create: a click on an empty day/slot opens the editor prefilled to
+  // that date/time.
+  onCreateAt?: (at: Date) => void;
   // Called whenever the visible date range changes so the page can lazily
   // resolve public holidays for newly visible years.
   onRangeChange?: (from: Date, to: Date) => void;
@@ -59,11 +63,19 @@ export default function CalendarView({
   blockedDays,
   blockWindows,
   onSelectSchedule,
+  onCreateAt,
   onRangeChange,
 }: CalendarViewProps) {
   const theme = useTheme();
-  const [view, setView] = useState<CalView>('month');
-  const [cursor, setCursor] = useState(() => startOfDay(new Date()));
+  // Persist the chosen view + focused date so a tab switch or reload returns to
+  // where the user was instead of resetting to month/today.
+  const [view, setView] = usePersistentState<CalView>('om.tasks.calview', 'month');
+  const [cursor, setCursor] = usePersistentState<Date>(
+    'om.tasks.calcursor',
+    startOfDay(new Date()),
+    dateCodec.serialize,
+    dateCodec.deserialize,
+  );
 
   // The visible date range depends on the active view. The grid views (week/
   // month) pad out to full Monday-first weeks; day/year cover their unit.
@@ -82,8 +94,12 @@ export default function CalendarView({
   }, [view, cursor]);
 
   // Notify the page so it can fetch holidays for any newly visible year.
+  // Debounced so rapidly stepping through months doesn't fire a holiday RPC per
+  // click — only the range the user lands on triggers a fetch.
   useEffect(() => {
-    onRangeChange?.(rangeStart, rangeEnd);
+    if (!onRangeChange) return;
+    const id = setTimeout(() => onRangeChange(rangeStart, rangeEnd), 150);
+    return () => clearTimeout(id);
   }, [onRangeChange, rangeStart, rangeEnd]);
 
   // Expand every enabled schedule's occurrences across the visible range, then
@@ -160,7 +176,7 @@ export default function CalendarView({
     });
   };
 
-  const renderDayCell = (day: Date, inMonth: boolean) => {
+  const renderDayCell = (day: Date, inMonth: boolean, headerVariant: 'number' | 'weekday' = 'number') => {
     const key = format(day, 'yyyy-MM-dd');
     return (
       <DayCell
@@ -168,10 +184,12 @@ export default function CalendarView({
         day={day}
         inMonth={inMonth}
         isToday={isSameDay(day, today)}
+        headerVariant={headerVariant}
         appointments={appointmentsByDay.get(key) ?? []}
         failures={failuresByDay.get(key) ?? []}
         blocked={blockedDays.get(key)}
         onSelectSchedule={onSelectSchedule}
+        onCreateAt={onCreateAt}
       />
     );
   };
@@ -222,13 +240,14 @@ export default function CalendarView({
       </Box>
 
       {view === 'day' && (
-        <DayAgenda
+        <DayTimeline
           day={cursor}
           appointments={appointmentsByDay.get(format(cursor, 'yyyy-MM-dd')) ?? []}
           failures={failuresByDay.get(format(cursor, 'yyyy-MM-dd')) ?? []}
           blocked={blockedDays.get(format(cursor, 'yyyy-MM-dd'))}
           blockWindows={blockWindows}
           onSelectSchedule={onSelectSchedule}
+          onCreateAt={onCreateAt}
         />
       )}
 
@@ -261,7 +280,13 @@ export default function CalendarView({
 
 // ── Month grid (full Monday-first weeks covering the month) ─────────────────
 
-function MonthGrid({cursor, renderDayCell}: {cursor: Date; renderDayCell: (day: Date, inMonth: boolean) => React.ReactNode}) {
+function MonthGrid({
+  cursor,
+  renderDayCell,
+}: {
+  cursor: Date;
+  renderDayCell: (day: Date, inMonth: boolean, headerVariant?: 'number' | 'weekday') => React.ReactNode;
+}) {
   const gridStart = startOfWeek(startOfMonth(cursor), WEEK_OPTS);
   const gridEnd = endOfWeek(endOfMonth(cursor), WEEK_OPTS);
   const days: Date[] = [];
@@ -278,14 +303,20 @@ function MonthGrid({cursor, renderDayCell}: {cursor: Date; renderDayCell: (day: 
 }
 
 // ── Week grid (7 columns on >= sm, vertical stack on xs) ────────────────────
+// Each cell carries its own weekday + date header (the 'weekday' variant), so
+// there's no separate header row — that keeps the weekday visible on mobile
+// where the grid collapses to a single stacked column.
 
-function WeekGrid({start, renderDayCell}: {start: Date; renderDayCell: (day: Date, inMonth: boolean) => React.ReactNode}) {
+function WeekGrid({
+  start,
+  renderDayCell,
+}: {
+  start: Date;
+  renderDayCell: (day: Date, inMonth: boolean, headerVariant?: 'number' | 'weekday') => React.ReactNode;
+}) {
   const days = Array.from({length: 7}, (_, i) => addDays(start, i));
   return (
     <Box>
-      <Box sx={{display: {xs: 'none', sm: 'block'}}}>
-        <WeekdayHeader />
-      </Box>
       <Box
         sx={{
           display: 'grid',
@@ -293,7 +324,7 @@ function WeekGrid({start, renderDayCell}: {start: Date; renderDayCell: (day: Dat
           gap: 0.5,
         }}
       >
-        {days.map((day) => renderDayCell(day, true))}
+        {days.map((day) => renderDayCell(day, true, 'weekday'))}
       </Box>
     </Box>
   );
@@ -403,132 +434,6 @@ function MiniMonth({
       })}
     </Box>
   );
-}
-
-// ── Day agenda (vertical list, mobile-first) ────────────────────────────────
-
-function DayAgenda({
-  day,
-  appointments,
-  failures,
-  blocked,
-  blockWindows,
-  onSelectSchedule,
-}: {
-  day: Date;
-  appointments: DayAppointment[];
-  failures: ScheduleRun[];
-  blocked?: BlockedDay;
-  blockWindows: BlockWindow[];
-  onSelectSchedule: (s: Schedule) => void;
-}) {
-  const theme = useTheme();
-  // Which block windows touch this weekday (active at its start, end, or any
-  // point) — show them all as the day's "no mowing" periods.
-  const weekday = (day.getDay() + 6) % 7; // 0=Mon..6=Sun
-  const dayWindows = blockWindows.filter(
-    (w) => isBlockWindowActive(w, weekday, 0) || isBlockWindowActive(w, weekday, 12 * 60) || isBlockWindowActive(w, weekday, 23 * 60 + 59) || (w.days ?? []).length === 0 || windowStartsOnDay(w, weekday),
-  );
-
-  return (
-    <Stack spacing={1.5}>
-      {blocked && (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            p: 1.25,
-            borderRadius: 1.5,
-            backgroundColor: alphaWarn(theme),
-          }}
-        >
-          <BlockIcon sx={{fontSize: 18, color: theme.palette.warning.main}} />
-          <Typography variant="body2">
-            {blocked.label ?? (blocked.reason === 'holiday' ? 'Public holiday' : 'Blocking day')} — mowing skipped
-          </Typography>
-        </Box>
-      )}
-
-      {dayWindows.length > 0 && (
-        <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
-          {dayWindows.map((w, i) => (
-            <Box
-              key={i}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                border: `1px solid ${theme.palette.warning.main}`,
-                color: theme.palette.warning.main,
-              }}
-            >
-              <BlockIcon sx={{fontSize: 14}} />
-              <Typography variant="caption">No mowing {w.start}–{w.end}</Typography>
-            </Box>
-          ))}
-        </Box>
-      )}
-
-      {appointments.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{py: 2}}>
-          No mowing scheduled on this day.
-        </Typography>
-      ) : (
-        appointments.map((appt, i) => (
-          <Box
-            key={`${appt.schedule.id ?? appt.schedule.name}-${i}`}
-            onClick={() => onSelectSchedule(appt.schedule)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') onSelectSchedule(appt.schedule);
-            }}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-              p: 1.25,
-              borderRadius: 1.5,
-              border: `1px solid ${theme.palette.divider}`,
-              cursor: 'pointer',
-              '&:hover': {borderColor: theme.palette.primary.main},
-            }}
-          >
-            <Typography variant="body2" fontWeight={700} sx={{minWidth: 48}}>
-              {appt.time}
-            </Typography>
-            <Typography variant="body2" sx={{flex: 1, minWidth: 0}} noWrap>
-              {appt.schedule.name || '(unnamed)'}
-            </Typography>
-          </Box>
-        ))
-      )}
-
-      {failures.length > 0 && (
-        <Box sx={{display: 'flex', alignItems: 'center', gap: 1, color: theme.palette.error.main}}>
-          <WarningIcon sx={{fontSize: 18}} />
-          <Typography variant="caption">
-            {failures.map((f) => `${f.name ?? f.schedule_id}: ${f.reason || f.status}`).join('; ')}
-          </Typography>
-        </Box>
-      )}
-    </Stack>
-  );
-}
-
-// Does a midnight-crossing window's "carry-over" (the morning tail) land on the
-// given weekday because it started the previous day? Used by the day agenda so
-// e.g. a Mon 20:00–08:00 window also shows on Tue morning.
-function windowStartsOnDay(w: BlockWindow, weekday: number): boolean {
-  const days = w.days ?? [];
-  if (days.length === 0) return true;
-  const prev = (weekday + 6) % 7;
-  // Active on the previous day means the morning tail bleeds into today.
-  return isBlockWindowActive(w, prev, 23 * 60 + 59);
 }
 
 function WeekdayHeader() {

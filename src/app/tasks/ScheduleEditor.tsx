@@ -6,6 +6,7 @@ import {
   Button,
   Checkbox,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -94,7 +95,8 @@ export interface Schedule {
 interface ScheduleEditorProps {
   initial: Schedule;
   onCancel: () => void;
-  onSave: (s: Schedule) => void;
+  // May be async; rejecting keeps the dialog open so the user can retry.
+  onSave: (s: Schedule) => void | Promise<void>;
 }
 
 const MODES: ReadonlyArray<{value: ScheduleMode; label: string; hint: string}> = [
@@ -105,6 +107,7 @@ const MODES: ReadonlyArray<{value: ScheduleMode; label: string; hint: string}> =
 
 export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEditorProps) {
   const [draft, setDraft] = useState<Schedule>(initial);
+  const [saving, setSaving] = useState(false);
   // Decompose the RRULE for the form; the recomposed value is derived (not
   // mirrored into draft) so the form fields stay the single source of truth
   // and we avoid an effect-driven cascade on every keystroke.
@@ -140,7 +143,7 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
         ? !!draft.window?.start && !!draft.window?.end
         : !!rrule && draft.duration_minutes > 0));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Assemble the persisted shape per mode. We only attach the blocks the
     // backend needs for the chosen mode so the stored document stays clean.
     const out: Schedule = {...draft, mode};
@@ -154,11 +157,18 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
       // continuous: rrule is irrelevant but the contract requires the field.
       out.rrule = 'FREQ=DAILY';
     }
-    onSave(out);
+    setSaving(true);
+    try {
+      await onSave(out);
+      // On success the parent closes the dialog; on failure it rejects and we
+      // keep the dialog open so the user can fix and retry.
+    } catch {
+      setSaving(false);
+    }
   };
 
   return (
-    <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
+    <Dialog open onClose={saving ? undefined : onCancel} fullWidth maxWidth="sm">
       <DialogTitle>{initial.id ? 'Edit schedule' : 'New schedule'}</DialogTitle>
       <DialogContent>
         <Box sx={{display: 'flex', flexDirection: 'column', gap: 2.5, mt: 1}}>
@@ -304,8 +314,15 @@ export default function ScheduleEditor({initial, onCancel, onSave}: ScheduleEdit
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} disabled={!canSave}>
+        <Button onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={!canSave || saving}
+          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+        >
           Save
         </Button>
       </DialogActions>
