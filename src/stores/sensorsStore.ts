@@ -154,3 +154,14 @@ export function useSensorValue(mowerId: string | undefined, sensorId: string): S
 export function useSensorHistory(mowerId: string | undefined, sensorId: string): SensorSample[] {
   return useSensorsStore((s) => (mowerId ? s.history[mowerId]?.[sensorId] ?? [] : []));
 }
+
+// Stable empty array so non-reactive readers don't see a fresh `[]` each call.
+const EMPTY_SENSOR_HISTORY: readonly SensorSample[] = [];
+
+// Non-reactive read for consumers that poll on their own cadence (e.g. the
+// battery charts refresh at ~4 Hz). Returns the current ring without
+// subscribing, so polling does not register a React dependency on every tick.
+export function getSensorHistory(mowerId: string | undefined, sensorId: string): readonly SensorSample[] {
+  if (!mowerId) return EMPTY_SENSOR_HISTORY;
+  return useSensorsStore.getState().history[mowerId]?.[sensorId] ?? EMPTY_SENSOR_HISTORY;
+}

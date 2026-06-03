@@ -348,6 +348,54 @@ export const imuSampleSchema = z.object({
 export type ImuSample = z.infer<typeof imuSampleSchema>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Battery / BMS telemetry
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// xbot_monitoring publishes the merged BMS + charger snapshot on `<prefix>bms/json`
+// at ~1 Hz, and the same shape is returned by the battery.get_telemetry RPC.
+// Every field is optional so the schema parses on all platforms: only a smart
+// BMS (e.g. the Sabo FSM-BMZ pack) fills the per-cell / capacity / cycle data
+// (`present` is then true); the charger fields come from /ll/power and exist on
+// every V2 platform. When nothing has reported yet the payload is just
+// {present:false}. `battery_status` is the human-readable comma-joined flag
+// string produced by mower_comms_v2's BmsServiceInterface, not a raw bitmask.
+export const bmsTelemetrySchema = z.object({
+  present: z.boolean().default(false),
+  ts_ms: z.number().optional(),
+  // Pack scalars (from mower_msgs/Bms).
+  voltage: z.number().optional(),
+  current: z.number().optional(), // +discharge / -charge
+  relative_state_of_charge: z.number().optional(), // 0..1
+  remaining_capacity: z.number().optional(), // Ah
+  full_charge_capacity: z.number().optional(), // Ah
+  cycle_count: z.number().int().optional(),
+  temperature: z.number().optional(), // deg.C
+  battery_status: z.string().optional(),
+  // From the firmware Extra Data JSON (smart BMS only).
+  mfr_name: z.string().optional(),
+  mfr_date: z.string().optional(),
+  dev_name: z.string().optional(),
+  dev_version: z.string().optional(),
+  dev_chemistry: z.string().optional(),
+  serial_number: z.number().optional(),
+  design_capacity_ah: z.number().optional(),
+  design_voltage_v: z.number().optional(),
+  absolute_soc: z.number().optional(), // 0..1, relative to design capacity (SoH hint)
+  cell_count: z.number().int().optional(),
+  cell_voltage_v: z.array(z.number()).optional(),
+  // Charger fields (from mower_msgs/Power) — present on every V2 platform.
+  charge_voltage: z.number().optional(),
+  charge_current: z.number().optional(),
+  battery_voltage: z.number().optional(),
+  battery_pct: z.number().optional(), // 0..1
+  charger_status: z.string().optional(),
+  charger_enabled: looseBoolean.optional(),
+  dcdc_input_current: z.number().optional(),
+  charger_input_current: z.number().optional(),
+});
+export type BmsTelemetry = z.infer<typeof bmsTelemetrySchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Defaults
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

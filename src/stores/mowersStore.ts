@@ -14,6 +14,7 @@ import {
   actionsSchema,
   Area,
   AreaType,
+  bmsTelemetrySchema,
   capabilitiesSchema,
   coveragePathSchema,
   eventSchema,
@@ -48,6 +49,7 @@ import {useDatumCacheStore} from './datumCacheStore';
 import {pruneNotifications, useNotificationsStore} from './notificationsStore';
 import {pruneSensorMower, pushSensorValue, seedAllSensorHistory} from './sensorsStore';
 import {clearImuStream, pushImuSample} from './imuStore';
+import {clearBmsTelemetry, pushBmsTelemetry} from './bmsStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
 
@@ -251,6 +253,7 @@ export const useMowersStore = create<MowersStore>()(
         // keep their buffers — same id.)
         if (!desiredIds.has(oldMower.id)) {
           clearImuStream(oldMower.id);
+          clearBmsTelemetry(oldMower.id);
           pruneNotifications(oldMower.id);
           pruneSensorMower(oldMower.id);
           sensorHistorySeeded.delete(oldMower.id);
@@ -327,6 +330,7 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'events/stream');
             client.subscribe(clientMower.prefix + 'rpc/response');
             client.subscribe(clientMower.prefix + 'imu/stream');
+            client.subscribe(clientMower.prefix + 'bms/json');
           }
           // The map/json topic doesn't carry the GPS datum (mower_map_service
           // omits it), so pull it from the live ROS-param-backed config. We
@@ -546,6 +550,18 @@ export const useMowersStore = create<MowersStore>()(
                 pushImuSample(mowers[idx].id, sample);
               } catch (e) {
                 console.warn('[mowersStore] imu/stream decode failed:', e);
+              }
+            } else if (partialTopic === 'bms/json') {
+              // Merged BMS + charger snapshot from xbot_monitoring (plain JSON,
+              // ~1 Hz). Every field is optional; on platforms without a smart
+              // BMS the payload is essentially {present:false} plus charger
+              // fields. Parsed into its own store so only the Battery page and
+              // (optionally) the dashboard card re-render.
+              try {
+                const telemetry = bmsTelemetrySchema.parse(JSON.parse(payload.toString()));
+                pushBmsTelemetry(mowers[idx].id, telemetry);
+              } catch (e) {
+                console.warn('[mowersStore] bms/json parse failed:', e);
               }
             } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
               // sensors/<id>/data is plaintext: a stringified number for DOUBLE

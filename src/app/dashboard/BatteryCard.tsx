@@ -3,7 +3,8 @@
 import {outerCardStyles} from '@/lib/cardStyles';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {BatteryChargingFull, BatteryFull, BatteryAlert, Bolt} from '@mui/icons-material';
-import {Box, Card, CardContent, Chip, LinearProgress, Typography, useTheme} from '@mui/material';
+import {Box, Card, CardActionArea, CardContent, Chip, LinearProgress, Typography, useTheme} from '@mui/material';
+import {useRouter} from 'next/navigation';
 
 function batteryColor(pct: number, isCharging: boolean) {
   if (isCharging) return 'info' as const;
@@ -14,6 +15,7 @@ function batteryColor(pct: number, isCharging: boolean) {
 
 export default function BatteryCard() {
   const theme = useTheme();
+  const router = useRouter();
   const battery = useSelectedMower((s) => s?.state.battery_percentage ?? 0);
   const isCharging = useSelectedMower((s) => s?.state.is_charging ?? false);
 
@@ -22,28 +24,30 @@ export default function BatteryCard() {
 
   return (
     <Card sx={{...outerCardStyles(theme), flex: '1 1 280px', minWidth: 0}}>
-      <CardContent>
-        <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2}}>
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
-            <Icon color={color} sx={{fontSize: 28}} />
-            <Typography variant="h6" fontWeight="600">
-              Battery
-            </Typography>
+      <CardActionArea onClick={() => router.push('/battery')} sx={{height: '100%'}}>
+        <CardContent>
+          <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2}}>
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
+              <Icon color={color} sx={{fontSize: 28}} />
+              <Typography variant="h6" fontWeight="600">
+                Battery
+              </Typography>
+            </Box>
+            {isCharging && <Chip size="small" color="info" icon={<Bolt fontSize="small" />} label="Charging" />}
           </Box>
-          {isCharging && <Chip size="small" color="info" icon={<Bolt fontSize="small" />} label="Charging" />}
-        </Box>
 
-        <Typography variant="h3" fontWeight="bold" color={`${color}.main`} sx={{mb: 1}}>
-          {battery}%
-        </Typography>
+          <Typography variant="h3" fontWeight="bold" color={`${color}.main`} sx={{mb: 1}}>
+            {battery}%
+          </Typography>
 
-        <LinearProgress
-          variant="determinate"
-          value={battery}
-          color={color}
-          sx={{height: 10, borderRadius: 5, '& .MuiLinearProgress-bar': {borderRadius: 5}}}
-        />
-      </CardContent>
+          <LinearProgress
+            variant="determinate"
+            value={battery}
+            color={color}
+            sx={{height: 10, borderRadius: 5, '& .MuiLinearProgress-bar': {borderRadius: 5}}}
+          />
+        </CardContent>
+      </CardActionArea>
     </Card>
   );
 }

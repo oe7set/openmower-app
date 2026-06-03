@@ -1,6 +1,7 @@
 import {type NavigationItem} from '@/components/types';
 import {
   BarChart as StatsIcon,
+  BatteryFull as BatteryIcon,
   Bolt as BoltIcon,
   BugReport as BugReportIcon,
   Dashboard as DashboardIcon,
@@ -32,6 +33,7 @@ export function createNavigationItems(): NavigationItem[] {
     {label: 'Drive', icon: <DriveIcon />, path: '/drive', isGlobal: false, isPrimary: true},
     {label: 'Tasks', icon: <TaskIcon />, path: '/tasks', isGlobal: false, isPrimary: true},
     {label: 'Sensors', icon: <SensorIcon />, path: '/sensors', isGlobal: false},
+    {label: 'Battery', icon: <BatteryIcon />, path: '/battery', isGlobal: false},
     {label: 'IMU', icon: <ImuIcon />, path: '/imu', isGlobal: false},
     {label: 'Statistics', icon: <StatsIcon />, path: '/statistics', isGlobal: false},
     {label: 'Heatmap', icon: <HeatmapIcon />, path: '/heatmap', isGlobal: false},

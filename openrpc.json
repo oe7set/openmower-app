@@ -618,6 +618,17 @@
       }
     },
     {
+      "name": "battery.get_telemetry",
+      "summary": "Latest cached BMS + charger telemetry snapshot (per-cell voltages, current, capacity, cycles, temperature, charger state). Mirrors the live <prefix>bms/json topic.",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "Battery telemetry. `present` is true only when a smart BMS has reported; charger fields from /ll/power are included on every platform. Every other field is optional and absent when the source does not provide it.",
+        "schema": {"$ref": "#/components/schemas/BmsTelemetry"}
+      }
+    },
+    {
       "name": "system.docker_prune",
       "summary": "Remove unused Docker images on the host (`docker image prune -af`).",
       "params": [],
@@ -1024,6 +1035,42 @@
         "properties": {
           "ts_ms": {"type": "integer", "description": "Wall-clock epoch milliseconds the sample was recorded at."},
           "value": {"type": "number"}
+        }
+      },
+      "BmsTelemetry": {
+        "type": "object",
+        "required": ["present"],
+        "description": "Merged battery + charger snapshot. `present` is true only when a smart BMS has reported. All other fields are optional and absent when the source does not provide them.",
+        "properties": {
+          "present": {"type": "boolean", "description": "Whether a smart BMS has reported (per-cell / capacity / cycle data is then available)."},
+          "ts_ms": {"type": "integer", "description": "Wall-clock epoch milliseconds of the underlying message."},
+          "voltage": {"type": "number", "description": "Pack voltage in V."},
+          "current": {"type": "number", "description": "Pack current in A (positive = discharge)."},
+          "relative_state_of_charge": {"type": "number", "description": "State of charge 0..1 relative to full-charge capacity."},
+          "remaining_capacity": {"type": "number", "description": "Remaining capacity in Ah."},
+          "full_charge_capacity": {"type": "number", "description": "Current full-charge capacity in Ah (wear indicator)."},
+          "cycle_count": {"type": "integer", "description": "Charge cycles."},
+          "temperature": {"type": "number", "description": "Pack temperature in degrees Celsius."},
+          "battery_status": {"type": "string", "description": "Human-readable comma-joined status/alarm flags."},
+          "mfr_name": {"type": "string"},
+          "mfr_date": {"type": "string", "description": "ISO 'YYYY-MM-DD'."},
+          "dev_name": {"type": "string"},
+          "dev_version": {"type": "string"},
+          "dev_chemistry": {"type": "string"},
+          "serial_number": {"type": "integer"},
+          "design_capacity_ah": {"type": "number"},
+          "design_voltage_v": {"type": "number"},
+          "absolute_soc": {"type": "number", "description": "State of charge 0..1 relative to design capacity (State-of-Health hint)."},
+          "cell_count": {"type": "integer"},
+          "cell_voltage_v": {"type": "array", "items": {"type": "number"}, "description": "Per-cell voltages in V."},
+          "charge_voltage": {"type": "number", "description": "Charger output voltage in V."},
+          "charge_current": {"type": "number", "description": "Charge current in A."},
+          "battery_voltage": {"type": "number", "description": "Battery voltage as read by the charger IC in V."},
+          "battery_pct": {"type": "number", "description": "Charger-computed battery percentage 0..1."},
+          "charger_status": {"type": "string", "description": "Human-readable charger state."},
+          "charger_enabled": {"type": "boolean"},
+          "dcdc_input_current": {"type": "number", "description": "DC-DC converter input current in A."},
+          "charger_input_current": {"type": "number", "description": "Charger input current from the wall in A."}
         }
       },
       "Schedule": {
