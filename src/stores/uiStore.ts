@@ -48,6 +48,13 @@ interface UiStore {
   /** Cap for teleop velocity in [0, 1]. The /drive slider writes this. */
   teleopSpeedCap: number;
 
+  // Heatmap-page overlay toggles. The three layers are independent and may be
+  // combined; the grid (binned) heatmap is the default look, points and the
+  // driven path are opt-in.
+  heatmapShowGrid: boolean;
+  heatmapShowPoints: boolean;
+  heatmapShowPath: boolean;
+
   // Appearance / UX prefs (Appearance page)
   drawerAnchor: DrawerAnchor;
   topBarMode: TopBarMode;
@@ -95,6 +102,10 @@ interface UiStore {
   setShowPatternPreview: (v: boolean) => void;
   setShowCoveragePreview: (v: boolean) => void;
   setTeleopSpeedCap: (v: number) => void;
+
+  setHeatmapShowGrid: (v: boolean) => void;
+  setHeatmapShowPoints: (v: boolean) => void;
+  setHeatmapShowPath: (v: boolean) => void;
 
   setDrawerAnchor: (v: DrawerAnchor) => void;
   setTopBarMode: (v: TopBarMode) => void;
@@ -171,6 +182,9 @@ export const useUiStore = create<UiStore>()(
       showPatternPreview: false,
       showCoveragePreview: true,
       teleopSpeedCap: 0.6,
+      heatmapShowGrid: true,
+      heatmapShowPoints: false,
+      heatmapShowPath: false,
       ...APPEARANCE_DEFAULTS,
       ...IMU_LOOK_DEFAULTS,
       ...IMU_MODEL_OFFSET_DEFAULTS,
@@ -182,8 +196,10 @@ export const useUiStore = create<UiStore>()(
       setShowMowingTrail: (showMowingTrail) => set({showMowingTrail}),
       setShowPatternPreview: (showPatternPreview) => set({showPatternPreview}),
       setShowCoveragePreview: (showCoveragePreview) => set({showCoveragePreview}),
-      setTeleopSpeedCap: (teleopSpeedCap) =>
-        set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
+      setTeleopSpeedCap: (teleopSpeedCap) => set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
+      setHeatmapShowGrid: (heatmapShowGrid) => set({heatmapShowGrid}),
+      setHeatmapShowPoints: (heatmapShowPoints) => set({heatmapShowPoints}),
+      setHeatmapShowPath: (heatmapShowPath) => set({heatmapShowPath}),
       setDrawerAnchor: (drawerAnchor) => set({drawerAnchor}),
       setTopBarMode: (topBarMode) => set({topBarMode}),
       setBottomBarEnabled: (bottomBarEnabled) => set({bottomBarEnabled}),
@@ -191,13 +207,11 @@ export const useUiStore = create<UiStore>()(
       setSidebarCompact: (sidebarCompact) => set({sidebarCompact}),
       setDensity: (density) => set({density}),
       setAccentColor: (accentColor) => set({accentColor}),
-      setFontScale: (fontScale) =>
-        set({fontScale: Math.max(0.8, Math.min(1.4, fontScale))}),
+      setFontScale: (fontScale) => set({fontScale: Math.max(0.8, Math.min(1.4, fontScale))}),
       setRadiusMode: (radiusMode) => set({radiusMode}),
       setMotionMode: (motionMode) => set({motionMode}),
       setPageHeaderStyle: (pageHeaderStyle) => set({pageHeaderStyle}),
-      setMowerColor: (id, color) =>
-        set((s) => ({mowerColors: {...s.mowerColors, [id]: color}})),
+      setMowerColor: (id, color) => set((s) => ({mowerColors: {...s.mowerColors, [id]: color}})),
       clearMowerColor: (id) =>
         set((s) => {
           const next = {...s.mowerColors};

@@ -30,6 +30,8 @@ import {
   ListItemText,
   MenuItem,
   Select,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -41,10 +43,13 @@ import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import ControlButton from '@/components/map/ControlButton';
 import MapStyleSelector from '@/components/map/MapStyleSelector';
 import {mapStyles} from '@/components/map/mapStyles';
+import PathLayer from '@/components/map/layers/PathLayer';
 import {useUiStore} from '@/stores/uiStore';
 import HeatmapLayer from './HeatmapLayer';
-import {METRICS, type MetricId, type Sample} from './metrics';
+import HeatmapGridLayer, {type GridCellInfo} from './HeatmapGridLayer';
+import {METRICS, sampleState, type MetricId, type Sample} from './metrics';
 import {rampSwatch} from './colors';
+import {buildPathSegments} from './path';
 
 interface SessionMeta {
   id: string;
@@ -55,32 +60,41 @@ interface SessionMeta {
   duration_s?: number;
 }
 
-const ALL_METRICS: MetricId[] = ['gps', 'wifi', 'imu', 'mow_current', 'mow_temp', 'esc_temp', 'battery', 'composite'];
+const ALL_METRICS: MetricId[] = [
+  'gps',
+  'gps_accuracy',
+  'state',
+  'speed',
+  'wifi',
+  'imu',
+  'vibration',
+  'tilt',
+  'turn_rate',
+  'mow_current',
+  'mow_temp',
+  'esc_temp',
+  'battery',
+  'composite',
+];
 
-// Decimation budget. The recorder logs at 4 Hz, so the previous fixed stride=4
-// returned ~1 point/second — a ~30 min mow came back as ~1800 points (~100 KB
-// over MQTT) and rendered/loaded fine. The cost that actually hurts is the
-// RPC *payload* (a single JSON publish over the WebSocket broker), not the
-// timeout, so we cap returned points low and — crucially — never request a
-// session at a finer resolution than that old baseline.
-//
-// strideFor() therefore clamps to MIN_STRIDE: a session is decimated to at most
-// ~TARGET_POINTS points, but never denser than 1 point/second, so small/medium
-// sessions transfer exactly as cheaply as before while multi-hour mows shrink
-// instead of blowing the payload up.
-const TARGET_POINTS = 1200;
-const MIN_STRIDE = 4;
+// Full-resolution loading via pagination. The single-shot payload was the old
+// bottleneck (one big JSON publish over the WebSocket broker), so instead of
+// decimating hard we fetch at full resolution (stride=1) in small pages and
+// render each page as it arrives. Each page stays ~100-150 KB, so there is no
+// timeout and the map fills in progressively even for multi-hour mows.
+const SAMPLE_STRIDE = 1;
+const PAGE_SIZE = 4000;
+// Safety cap so a pathological/runaway session can't load unbounded points into
+// the browser; well above a normal multi-hour mow at the gated sample rate.
+const MAX_TOTAL_POINTS = 60_000;
 
-// Payloads are small with the stride above, so a moderate timeout is enough; a
-// too-long ceiling only makes a genuinely failed call hang longer.
+// Per-page timeout: pages are small, so a moderate ceiling is plenty and keeps
+// a genuinely stuck page from hanging too long.
 const SESSION_FETCH_TIMEOUT_MS = 30_000;
 
-// Pick a decimation stride: never finer than the 4 Hz→1 Hz baseline, and
-// coarser still for long sessions so the response stays ~TARGET_POINTS points.
-function strideFor(sampleCount: number | undefined): number {
-  if (!sampleCount) return MIN_STRIDE;
-  return Math.max(MIN_STRIDE, Math.ceil(sampleCount / TARGET_POINTS));
-}
+// Grid heatmap cell size in metres. ~0.25 m ≈ the mowing track width, so cells
+// merge into a continuous coverage surface while still resolving thin gaps.
+const GRID_CELL_SIZE_M = 0.25;
 
 export default function HeatmapPage() {
   const theme = useTheme();
@@ -89,6 +103,15 @@ export default function HeatmapPage() {
   const {datum, hasReal: hasRealDatum} = useEffectiveDatum();
   const mapStyle = useUiStore((s) => s.mapStyle);
   const hasCap = useSelectedMower((s) => s?.hasCapability('telemetry.list_sessions') ?? false);
+
+  // Independent, combinable overlay toggles (persisted). Grid is the default
+  // heatmap look; points and the driven path are opt-in.
+  const showGrid = useUiStore((s) => s.heatmapShowGrid);
+  const showPoints = useUiStore((s) => s.heatmapShowPoints);
+  const showPath = useUiStore((s) => s.heatmapShowPath);
+  const setShowGrid = useUiStore((s) => s.setHeatmapShowGrid);
+  const setShowPoints = useUiStore((s) => s.setHeatmapShowPoints);
+  const setShowPath = useUiStore((s) => s.setHeatmapShowPath);
 
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -101,9 +124,14 @@ export default function HeatmapPage() {
   // even though samplesRef itself is mutated in place.
   const [samplesVersion, setSamplesVersion] = useState(0);
   const [loadingSamples, setLoadingSamples] = useState<Set<string>>(new Set());
+  // Points loaded so far per still-loading session, for the progress readout.
+  const [loadedCounts, setLoadedCounts] = useState<Record<string, number>>({});
   const [sampleErrors, setSampleErrors] = useState<Record<string, string>>({});
   const [metric, setMetric] = useState<MetricId>('gps');
   const [hoverIdxBySession, setHoverIdxBySession] = useState<Record<string, number | null>>({});
+  // Hovered grid cell (grid overlay only); shows aggregate stats instead of a
+  // single sample.
+  const [hoverCell, setHoverCell] = useState<GridCellInfo | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const mapRef = useRef<MlMap>(null);
 
@@ -132,26 +160,40 @@ export default function HeatmapPage() {
   }, [hasCap, rpc, sessions, loadingSessions, refreshSessions]);
 
   const fetchSamples = useCallback(
-    async (id: string, sampleCount?: number) => {
+    async (id: string) => {
       if (!rpc) return;
       if (samplesRef.current!.has(id)) return;
       setLoadingSamples((prev) => new Set(prev).add(id));
+      setLoadedCounts((prev) => ({...prev, [id]: 0}));
       setSampleErrors((prev) => {
         if (!(id in prev)) return prev;
         const next = {...prev};
         delete next[id];
         return next;
       });
+      // Accumulate full-resolution samples one small page at a time, rendering
+      // each page as it lands so the map fills in progressively. Each response
+      // stays small (~PAGE_SIZE points), so there is no oversized single
+      // payload and no timeout even for multi-hour sessions.
+      const acc: Sample[] = [];
       try {
-        // Decimate large sessions so the payload stays small and the call
-        // returns within the timeout; small sessions are sent in full.
-        const stride = strideFor(sampleCount);
-        const res = (await rpc.telemetry.get_session({id, stride}, SESSION_FETCH_TIMEOUT_MS)) as unknown as {
-          samples?: Sample[];
-        };
-        samplesRef.current!.set(id, res?.samples ?? []);
-        setSamplesVersion((v) => v + 1);
+        for (let offset = 0; offset < MAX_TOTAL_POINTS; offset += PAGE_SIZE) {
+          const res = (await rpc.telemetry.get_session(
+            {id, stride: SAMPLE_STRIDE, offset, limit: PAGE_SIZE},
+            SESSION_FETCH_TIMEOUT_MS,
+          )) as unknown as {samples?: Sample[]; truncated?: boolean};
+          const page = res?.samples ?? [];
+          acc.push(...page);
+          // Publish the growing array each page for incremental rendering.
+          samplesRef.current!.set(id, acc.slice());
+          setSamplesVersion((v) => v + 1);
+          setLoadedCounts((prev) => ({...prev, [id]: acc.length}));
+          // Done when the server reports no more or returned a short final page.
+          if (!res?.truncated || page.length < PAGE_SIZE) break;
+        }
       } catch (e) {
+        // Keep whatever pages already loaded so the user still sees partial data.
+        if (acc.length === 0) samplesRef.current!.delete(id);
         setSampleErrors((prev) => ({...prev, [id]: (e as Error).message || 'Unknown error'}));
       } finally {
         setLoadingSamples((prev) => {
@@ -159,19 +201,24 @@ export default function HeatmapPage() {
           next.delete(id);
           return next;
         });
+        setLoadedCounts((prev) => {
+          const next = {...prev};
+          delete next[id];
+          return next;
+        });
       }
     },
     [rpc],
   );
 
-  const toggleSession = (id: string, sampleCount?: number) => {
+  const toggleSession = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
       } else {
         next.add(id);
-        fetchSamples(id, sampleCount);
+        fetchSamples(id);
       }
       return next;
     });
@@ -268,15 +315,18 @@ export default function HeatmapPage() {
       <List dense disablePadding sx={{maxHeight: {xs: 'unset', md: 'calc(100vh - 320px)'}, overflow: 'auto'}}>
         {sessions?.map((s) => {
           const err = sampleErrors[s.id];
+          const loaded = loadedCounts[s.id];
           const secondary = loadingSamples.has(s.id) ? (
-            <CircularProgress size={14} />
+            <Tooltip title={loaded ? `Loading… ${loaded}/${s.sample_count} pts` : 'Loading…'} arrow>
+              <CircularProgress size={14} />
+            </Tooltip>
           ) : err ? (
             <Tooltip title={`Failed to load: ${err}`} arrow>
               <IconButton
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
-                  fetchSamples(s.id, s.sample_count);
+                  fetchSamples(s.id);
                 }}
                 aria-label="Retry loading session samples"
               >
@@ -286,7 +336,7 @@ export default function HeatmapPage() {
           ) : null;
           return (
             <ListItem key={s.id} disablePadding secondaryAction={secondary}>
-              <ListItemButton dense onClick={() => toggleSession(s.id, s.sample_count)}>
+              <ListItemButton dense onClick={() => toggleSession(s.id)}>
                 <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
                 <ListItemText
                   primary={new Date(s.start_ts * 1000).toLocaleString()}
@@ -396,6 +446,37 @@ export default function HeatmapPage() {
                   })}
                 </Box>
               )}
+              <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mt: 1, flexWrap: 'wrap'}}>
+                <Typography variant="caption" color="text.secondary" sx={{mr: 0.5}}>
+                  Layers
+                </Typography>
+                <ToggleButtonGroup size="small">
+                  <ToggleButton
+                    value="grid"
+                    selected={showGrid}
+                    onClick={() => setShowGrid(!showGrid)}
+                    sx={{textTransform: 'none', fontSize: '0.72rem', py: 0.25}}
+                  >
+                    Heatmap
+                  </ToggleButton>
+                  <ToggleButton
+                    value="points"
+                    selected={showPoints}
+                    onClick={() => setShowPoints(!showPoints)}
+                    sx={{textTransform: 'none', fontSize: '0.72rem', py: 0.25}}
+                  >
+                    Points
+                  </ToggleButton>
+                  <ToggleButton
+                    value="path"
+                    selected={showPath}
+                    onClick={() => setShowPath(!showPath)}
+                    sx={{textTransform: 'none', fontSize: '0.72rem', py: 0.25}}
+                  >
+                    Path
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
               <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5, mt: 1.5, flexWrap: 'wrap'}}>
                 <Typography variant="caption" color="text.secondary">
                   Low
@@ -452,75 +533,147 @@ export default function HeatmapPage() {
                 <RFullscreenControl />
                 <ControlButton position="top-right" icon={FocusIcon} title="Fit to bounds" onClick={fitToBounds} />
                 <MapStyleSelector />
-                {Array.from(selected).map((id) => {
+                {/* Overlays stack bottom→top: grid fill, then the driven path,
+                    then points (kept topmost so per-sample hover wins). */}
+                {showGrid &&
+                  Array.from(selected).map((id) => {
+                    const arr = samplesRef.current!.get(id);
+                    if (!arr || arr.length === 0) return null;
+                    return (
+                      <HeatmapGridLayer
+                        key={`grid-${id}-${metric}`}
+                        id={`heatmap-grid-${id}`}
+                        samples={arr}
+                        metricId={metric}
+                        datum={datum}
+                        cellSize={GRID_CELL_SIZE_M}
+                        onHover={setHoverCell}
+                      />
+                    );
+                  })}
+                {showPath &&
+                  Array.from(selected).map((id) => {
+                    const arr = samplesRef.current!.get(id);
+                    if (!arr || arr.length === 0) return null;
+                    const segments = buildPathSegments(arr);
+                    return segments.map((seg, i) => (
+                      <PathLayer
+                        key={`path-${id}-${i}`}
+                        id={`heatmap-path-${id}-${i}`}
+                        paths={[seg.points]}
+                        datum={datum}
+                        color={seg.kind === 'paused' ? '#f59e0b' : '#2563eb'}
+                        width={2}
+                        opacity={0.9}
+                      />
+                    ));
+                  })}
+                {showPoints &&
+                  Array.from(selected).map((id) => {
+                    const arr = samplesRef.current!.get(id);
+                    if (!arr || arr.length === 0) return null;
+                    return (
+                      <HeatmapLayer
+                        key={`${id}-${metric}`}
+                        id={`heatmap-${id}`}
+                        samples={arr}
+                        metricId={metric}
+                        datum={datum}
+                        onHover={(idx) => setHoverIdxBySession((prev) => ({...prev, [id]: idx}))}
+                      />
+                    );
+                  })}
+              </RMap>
+              {/* Per-sample tooltip (points overlay) — first hovered session
+                  wins. On mobile it sits at the bottom so it doesn't collide
+                  with the map controls (top-right). */}
+              {showPoints &&
+                Object.entries(hoverIdxBySession).map(([id, idx]) => {
+                  if (idx === null || idx === undefined) return null;
                   const arr = samplesRef.current!.get(id);
-                  if (!arr || arr.length === 0) return null;
+                  const s = arr?.[idx];
+                  if (!s) return null;
                   return (
-                    <HeatmapLayer
-                      key={`${id}-${metric}`}
-                      id={`heatmap-${id}`}
-                      samples={arr}
-                      metricId={metric}
-                      datum={datum}
-                      onHover={(idx) => setHoverIdxBySession((prev) => ({...prev, [id]: idx}))}
-                    />
+                    <Box
+                      key={id}
+                      sx={{
+                        position: 'absolute',
+                        ...(isMobile
+                          ? {bottom: 12, left: 12, right: 12, maxWidth: 'unset'}
+                          : {top: 12, right: 12, maxWidth: 280}),
+                        bgcolor: theme.palette.background.paper,
+                        border: `1px solid ${theme.palette.divider}`,
+                        borderRadius: 1,
+                        px: 1.5,
+                        py: 1,
+                        fontSize: '0.78rem',
+                        fontFamily: 'var(--font-dm-mono), monospace',
+                        pointerEvents: 'none',
+                        zIndex: 5,
+                      }}
+                    >
+                      <div>{new Date(s.ts * 1000).toLocaleTimeString()}</div>
+                      <div style={{opacity: 0.7}}>
+                        x={s.x.toFixed(2)}, y={s.y.toFixed(2)}
+                      </div>
+                      {sampleState(s) !== undefined && <div>State: {sampleState(s)}</div>}
+                      {s.gps_fix_type !== undefined && (
+                        <div>
+                          GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · PDOP{' '}
+                          {s.gps_pdop?.toFixed(2) ?? '—'}
+                        </div>
+                      )}
+                      {s.gps_accuracy !== undefined && <div>GPS acc: ±{s.gps_accuracy.toFixed(2)}m</div>}
+                      {(s.wifi_dbm !== undefined || s.wifi_q !== undefined) && (
+                        <div>
+                          WLAN: {s.wifi_dbm ?? '—'}dBm ({((s.wifi_q ?? 0) * 100).toFixed(0)}%)
+                        </div>
+                      )}
+                      {(s.qw !== undefined || s.pitch !== undefined) && (
+                        <div>
+                          Orient: roll {radToDeg(s.roll)}° · pitch {radToDeg(s.pitch)}° · yaw {radToDeg(s.yaw)}°
+                        </div>
+                      )}
+                      {s.om_mow_motor_current !== undefined && (
+                        <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>
+                      )}
+                      {s.om_mow_motor_temp !== undefined && <div>Mow temp: {s.om_mow_motor_temp.toFixed(1)}°C</div>}
+                      {(s.om_left_esc_temp !== undefined || s.om_right_esc_temp !== undefined) && (
+                        <div>
+                          ESC: L {s.om_left_esc_temp?.toFixed(1) ?? '—'}°C · R {s.om_right_esc_temp?.toFixed(1) ?? '—'}
+                          °C
+                        </div>
+                      )}
+                      {s.om_v_battery !== undefined && <div>Battery: {s.om_v_battery.toFixed(2)}V</div>}
+                    </Box>
                   );
                 })}
-              </RMap>
-              {/* Tooltip — first hovered session wins. On mobile it sits at the
-                  bottom so it doesn't collide with the map controls (top-right). */}
-              {Object.entries(hoverIdxBySession).map(([id, idx]) => {
-                if (idx === null || idx === undefined) return null;
-                const arr = samplesRef.current!.get(id);
-                const s = arr?.[idx];
-                if (!s) return null;
-                return (
-                  <Box
-                    key={id}
-                    sx={{
-                      position: 'absolute',
-                      ...(isMobile
-                        ? {bottom: 12, left: 12, right: 12, maxWidth: 'unset'}
-                        : {top: 12, right: 12, maxWidth: 280}),
-                      bgcolor: theme.palette.background.paper,
-                      border: `1px solid ${theme.palette.divider}`,
-                      borderRadius: 1,
-                      px: 1.5,
-                      py: 1,
-                      fontSize: '0.78rem',
-                      fontFamily: 'var(--font-dm-mono), monospace',
-                      pointerEvents: 'none',
-                      zIndex: 5,
-                    }}
-                  >
-                    <div>{new Date(s.ts * 1000).toLocaleTimeString()}</div>
-                    <div style={{opacity: 0.7}}>
-                      x={s.x.toFixed(2)}, y={s.y.toFixed(2)}
-                    </div>
-                    {s.gps_fix_type !== undefined && (
-                      <div>
-                        GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · PDOP{' '}
-                        {s.gps_pdop?.toFixed(2) ?? '—'}
-                      </div>
-                    )}
-                    {(s.wifi_dbm !== undefined || s.wifi_q !== undefined) && (
-                      <div>
-                        WLAN: {s.wifi_dbm ?? '—'}dBm ({((s.wifi_q ?? 0) * 100).toFixed(0)}%)
-                      </div>
-                    )}
-                    {s.om_mow_motor_current !== undefined && (
-                      <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>
-                    )}
-                    {s.om_mow_motor_temp !== undefined && <div>Mow temp: {s.om_mow_motor_temp.toFixed(1)}°C</div>}
-                    {(s.om_left_esc_temp !== undefined || s.om_right_esc_temp !== undefined) && (
-                      <div>
-                        ESC: L {s.om_left_esc_temp?.toFixed(1) ?? '—'}°C · R {s.om_right_esc_temp?.toFixed(1) ?? '—'}°C
-                      </div>
-                    )}
-                    {s.om_v_battery !== undefined && <div>Battery: {s.om_v_battery.toFixed(2)}V</div>}
-                  </Box>
-                );
-              })}
+              {/* Grid-cell tooltip (grid overlay): aggregate stats for the
+                  hovered cell rather than a single sample. */}
+              {showGrid && hoverCell && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    ...(isMobile
+                      ? {bottom: 12, left: 12, right: 12, maxWidth: 'unset'}
+                      : {top: 12, right: 12, maxWidth: 280}),
+                    bgcolor: theme.palette.background.paper,
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    px: 1.5,
+                    py: 1,
+                    fontSize: '0.78rem',
+                    fontFamily: 'var(--font-dm-mono), monospace',
+                    pointerEvents: 'none',
+                    zIndex: 5,
+                  }}
+                >
+                  <div>{def.label}</div>
+                  <div style={{opacity: 0.7}}>
+                    Ø {hoverCell.mean.toFixed(2)} · {hoverCell.count} pts / {GRID_CELL_SIZE_M}m cell
+                  </div>
+                </Box>
+              )}
               {selected.size === 0 && (
                 <Box
                   sx={{
@@ -550,6 +703,12 @@ export default function HeatmapPage() {
       </PageContent>
     </Page>
   );
+}
+
+// Radians → whole degrees for the orientation tooltip; em-dash when absent.
+function radToDeg(rad: number | undefined): string {
+  if (rad === undefined || !Number.isFinite(rad)) return '—';
+  return Math.round((rad * 180) / Math.PI).toString();
 }
 
 function formatDuration(seconds: number): string {

@@ -15,10 +15,36 @@ interface KnownSample {
   gps_fix_type?: number;
   gps_satellite_count?: number;
   gps_pdop?: number;
+  // GPS position accuracy in metres (RobotState.robot_pose.position_accuracy).
+  // Present only in sessions recorded after the recorder gained the field.
+  gps_accuracy?: number;
   wifi_dbm?: number;
   wifi_q?: number;
+  // Raw IMU (newer recorder only): orientation quaternion, angular velocity
+  // (rad/s) and linear acceleration (m/s²).
+  qw?: number;
+  qx?: number;
+  qy?: number;
+  qz?: number;
+  gx?: number;
+  gy?: number;
+  gz?: number;
+  ax?: number;
+  ay?: number;
+  az?: number;
 }
+// The numeric known fields plus an open record of per-sensor numeric values.
+// `state` (the one string field) is kept off this type so the open record
+// stays numeric — read it via `sampleState()`.
 export type Sample = KnownSample & Record<string, number | undefined>;
+
+// Mowing state ('MOWING' | 'PAUSED' | undefined for pre-state sessions). Stored
+// in the raw JSONL as a string field; accessed through this helper so the
+// numeric Sample index signature is not widened to include strings.
+export function sampleState(s: Sample): string | undefined {
+  const v = (s as unknown as {state?: unknown}).state;
+  return typeof v === 'string' ? v : undefined;
+}
 
 // Each metric can be toggled on/off and produces a per-sample colour. Some
 // metrics require a rolling-window calculation (IMU jerk) — those see the
@@ -42,8 +68,14 @@ export interface MetricDef {
 
 export type MetricId =
   | 'gps'
+  | 'gps_accuracy'
   | 'wifi'
   | 'imu'
+  | 'speed'
+  | 'vibration'
+  | 'tilt'
+  | 'turn_rate'
+  | 'state'
   | 'mow_current'
   | 'mow_temp'
   | 'esc_temp'
@@ -107,6 +139,52 @@ function imuJerkPrecompute(samples: Sample[]): Float32Array {
   return out;
 }
 
+// Ground speed (m/s) derived from consecutive positions: distance / dt over a
+// small centred window for smoothing. Uses only x, y, ts, so it works on every
+// session including those recorded before the IMU/state fields existed. Returns
+// raw m/s (not normalised) so resolveRange can autoscale the legend.
+function speedPrecompute(samples: Sample[]): Float32Array {
+  const n = samples.length;
+  const out = new Float32Array(n);
+  const WINDOW = 2; // ±2 samples ≈ ±0.5 s at 4 Hz
+  for (let i = 0; i < n; i++) {
+    const lo = Math.max(0, i - WINDOW);
+    const hi = Math.min(n - 1, i + WINDOW);
+    const a = samples[lo];
+    const b = samples[hi];
+    const dt = b.ts - a.ts;
+    if (dt > 0) {
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      out[i] = d / dt;
+    }
+  }
+  return out;
+}
+
+// Magnitude of the gravity-removed linear acceleration (m/s²) — a proxy for
+// vibration / shocks. Needs the raw accel fields (newer recorder); falls back
+// to 0 when absent so the layer renders nothing meaningful rather than crash.
+const GRAVITY = 9.81;
+function vibration(s: Sample): number | undefined {
+  if (s.ax === undefined && s.ay === undefined && s.az === undefined) return undefined;
+  const mag = Math.hypot(s.ax ?? 0, s.ay ?? 0, s.az ?? 0);
+  return Math.abs(mag - GRAVITY);
+}
+
+// Tilt angle (degrees from level) from pitch & roll, which the recorder already
+// provides on every session. tilt = acos(cos(pitch)*cos(roll)).
+function tiltDeg(s: Sample): number | undefined {
+  if (s.pitch === undefined && s.roll === undefined) return undefined;
+  const c = Math.cos(s.pitch ?? 0) * Math.cos(s.roll ?? 0);
+  return (Math.acos(Math.min(1, Math.max(-1, c))) * 180) / Math.PI;
+}
+
+// Turn / rotation rate magnitude (rad/s) from the gyro. Newer recorder only.
+function turnRate(s: Sample): number | undefined {
+  if (s.gx === undefined && s.gy === undefined && s.gz === undefined) return undefined;
+  return Math.hypot(s.gx ?? 0, s.gy ?? 0, s.gz ?? 0);
+}
+
 export const METRICS: Record<MetricId, MetricDef> = {
   gps: {
     id: 'gps',
@@ -116,6 +194,52 @@ export const METRICS: Record<MetricId, MetricDef> = {
     goodGreen: true,
     value: gpsScore,
     range: [0, 1],
+  },
+  gps_accuracy: {
+    id: 'gps_accuracy',
+    label: 'GPS accuracy',
+    description: 'Reported position accuracy in metres. Green = a few cm (RTK fix); red ≥10 cm. Newer recordings only.',
+    ramp: 'rdYlGn',
+    goodGreen: false, // smaller = better
+    value: (s) => s.gps_accuracy,
+    range: [0, 0.1],
+  },
+  speed: {
+    id: 'speed',
+    label: 'Speed',
+    description: 'Ground speed derived from position over time (m/s). Dark = slow/stopped, bright = fast.',
+    ramp: 'inferno',
+    precompute: speedPrecompute,
+  },
+  state: {
+    id: 'state',
+    label: 'Mowing state',
+    description: 'Green = mowing, orange = paused (e.g. RTK lost). Newer recordings only.',
+    ramp: 'rdYlGn',
+    goodGreen: true,
+    value: (s) => (sampleState(s) === 'PAUSED' ? 0 : sampleState(s) === undefined ? undefined : 1),
+    range: [0, 1],
+  },
+  vibration: {
+    id: 'vibration',
+    label: 'Vibration',
+    description: 'Magnitude of gravity-removed acceleration (m/s²) — shocks/rough ground. Newer recordings only.',
+    ramp: 'inferno',
+    value: vibration,
+  },
+  tilt: {
+    id: 'tilt',
+    label: 'Tilt',
+    description: 'Slope angle from level in degrees (from pitch & roll). Bright = steep.',
+    ramp: 'inferno',
+    value: tiltDeg,
+  },
+  turn_rate: {
+    id: 'turn_rate',
+    label: 'Turn rate',
+    description: 'Gyro rotation-rate magnitude (rad/s) — high at turns. Newer recordings only.',
+    ramp: 'inferno',
+    value: turnRate,
   },
   wifi: {
     id: 'wifi',

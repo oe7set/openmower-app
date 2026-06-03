@@ -723,11 +723,23 @@
           "description": "Decimation factor (return every N-th sample). Default 1 = full resolution.",
           "required": false,
           "schema": {"type": "integer", "minimum": 1}
+        },
+        {
+          "name": "offset",
+          "description": "Pagination: number of (post-stride) samples to skip before this page. Default 0.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 0}
+        },
+        {
+          "name": "limit",
+          "description": "Pagination: maximum number of samples to return in this page. Server caps it to its own maximum.",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 1}
         }
       ],
       "result": {
         "name": "result",
-        "description": "Sample stream for the session.",
+        "description": "Sample stream for the session (one page when offset/limit are used).",
         "schema": {
           "type": "object",
           "properties": {
@@ -747,12 +759,27 @@
                   "gps_fix_type": {"type": "integer"},
                   "gps_satellite_count": {"type": "integer"},
                   "gps_pdop": {"type": "number"},
+                  "gps_accuracy": {"type": "number"},
                   "wifi_dbm": {"type": "number"},
-                  "wifi_q": {"type": "number"}
+                  "wifi_q": {"type": "number"},
+                  "state": {"type": "string", "description": "Mowing state at capture: 'MOWING' or 'PAUSED'."},
+                  "qw": {"type": "number"},
+                  "qx": {"type": "number"},
+                  "qy": {"type": "number"},
+                  "qz": {"type": "number"},
+                  "gx": {"type": "number"},
+                  "gy": {"type": "number"},
+                  "gz": {"type": "number"},
+                  "ax": {"type": "number"},
+                  "ay": {"type": "number"},
+                  "az": {"type": "number"}
                 }
               }
             },
-            "truncated": {"type": "boolean"}
+            "truncated": {
+              "type": "boolean",
+              "description": "True when more samples remain past this page (request the next offset)."
+            }
           }
         }
       }
