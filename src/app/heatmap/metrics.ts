@@ -77,7 +77,9 @@ export type MetricId =
   | 'turn_rate'
   | 'state'
   | 'mow_current'
+  | 'mow_rpm'
   | 'mow_temp'
+  | 'mow_esc_temp'
   | 'esc_temp'
   | 'battery'
   | 'composite';
@@ -264,12 +266,27 @@ export const METRICS: Record<MetricId, MetricDef> = {
     ramp: 'inferno',
     value: (s) => s.om_mow_motor_current,
   },
+  mow_rpm: {
+    id: 'mow_rpm',
+    label: 'Mow motor RPM',
+    description: 'Blade motor speed. Drops under load — red marks dense grass / tough spots. Newer recordings only.',
+    ramp: 'rdYlGn',
+    goodGreen: true, // high RPM = free-running = good; low = bogged down
+    value: (s) => s.om_mow_motor_rpm,
+  },
   mow_temp: {
     id: 'mow_temp',
     label: 'Mow motor temp',
     description: 'Hotspots indicate prolonged high load.',
     ramp: 'inferno',
     value: (s) => s.om_mow_motor_temp,
+  },
+  mow_esc_temp: {
+    id: 'mow_esc_temp',
+    label: 'Mow ESC temp',
+    description: 'Temperature of the ESC driving the blade motor. Hotspots indicate prolonged high load. Newer recordings only.',
+    ramp: 'inferno',
+    value: (s) => s.om_mow_esc_temp,
   },
   esc_temp: {
     id: 'esc_temp',

@@ -71,7 +71,9 @@ const ALL_METRICS: MetricId[] = [
   'tilt',
   'turn_rate',
   'mow_current',
+  'mow_rpm',
   'mow_temp',
+  'mow_esc_temp',
   'esc_temp',
   'battery',
   'composite',
@@ -637,7 +639,9 @@ export default function HeatmapPage() {
                       {s.om_mow_motor_current !== undefined && (
                         <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>
                       )}
+                      {s.om_mow_motor_rpm !== undefined && <div>Mow RPM: {s.om_mow_motor_rpm.toFixed(0)}</div>}
                       {s.om_mow_motor_temp !== undefined && <div>Mow temp: {s.om_mow_motor_temp.toFixed(1)}°C</div>}
+                      {s.om_mow_esc_temp !== undefined && <div>Mow ESC: {s.om_mow_esc_temp.toFixed(1)}°C</div>}
                       {(s.om_left_esc_temp !== undefined || s.om_right_esc_temp !== undefined) && (
                         <div>
                           ESC: L {s.om_left_esc_temp?.toFixed(1) ?? '—'}°C · R {s.om_right_esc_temp?.toFixed(1) ?? '—'}
