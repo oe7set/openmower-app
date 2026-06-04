@@ -3,10 +3,10 @@
 import type {GnssSatellite} from '@/stores/schemas';
 import {CONSTELLATION_ORDER, constellation, gnssIdColor} from '@/lib/gnss';
 import {Box, Table, TableBody, TableCell, TableHead, TableRow, Typography} from '@mui/material';
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 
 interface ConstellationSummaryProps {
-  satellites: GnssSatellite[];
+  satellites: readonly GnssSatellite[];
 }
 
 interface Row {
@@ -16,7 +16,7 @@ interface Row {
   avgCn0: number;
 }
 
-function summarize(sats: GnssSatellite[]): Row[] {
+function summarize(sats: readonly GnssSatellite[]): Row[] {
   const rows: Row[] = [];
   for (const gnssId of CONSTELLATION_ORDER) {
     const members = sats.filter((s) => s.g === gnssId);
@@ -30,7 +30,7 @@ function summarize(sats: GnssSatellite[]): Row[] {
   return rows;
 }
 
-export default function ConstellationSummary({satellites}: ConstellationSummaryProps) {
+function ConstellationSummary({satellites}: ConstellationSummaryProps) {
   const rows = useMemo(() => summarize(satellites), [satellites]);
 
   if (rows.length === 0) {
@@ -69,3 +69,5 @@ export default function ConstellationSummary({satellites}: ConstellationSummaryP
     </Table>
   );
 }
+
+export default memo(ConstellationSummary);

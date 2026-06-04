@@ -3,10 +3,10 @@
 import type {GnssSatellite} from '@/stores/schemas';
 import {constellation, gnssIdColor, svLabel} from '@/lib/gnss';
 import {Box, Typography, useTheme} from '@mui/material';
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 
 interface SkyplotProps {
-  satellites: GnssSatellite[];
+  satellites: readonly GnssSatellite[];
 }
 
 // A satellite resolved to a single sky position (deduped across bands).
@@ -22,7 +22,7 @@ interface SkySat {
 
 // Collapse the per-signal rows to one entry per (gnss, sv) for plotting, taking
 // the strongest band's C/N0 and OR-ing the used/healthy flags.
-function dedupeForSky(sats: GnssSatellite[]): SkySat[] {
+function dedupeForSky(sats: readonly GnssSatellite[]): SkySat[] {
   const byKey = new Map<string, SkySat>();
   for (const s of sats) {
     // Skip satellites with no known sky position — they can't be plotted.
@@ -56,7 +56,7 @@ function project(azimuth: number, elevation: number): {x: number; y: number} {
   return {x: r * Math.sin(a), y: -r * Math.cos(a)};
 }
 
-export default function Skyplot({satellites}: SkyplotProps) {
+function Skyplot({satellites}: SkyplotProps) {
   const theme = useTheme();
   const sats = useMemo(() => dedupeForSky(satellites), [satellites]);
 
@@ -175,4 +175,5 @@ export default function Skyplot({satellites}: SkyplotProps) {
   );
 }
 
+export default memo(Skyplot);
 export {svLabel};

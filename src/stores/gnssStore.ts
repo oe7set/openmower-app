@@ -1,6 +1,7 @@
 import {create} from 'zustand';
 
-import type {GnssSample} from './schemas';
+import {satsShallowEqual} from '@/lib/gnss';
+import type {GnssSample, GnssSatellite} from './schemas';
 
 // Live GNSS stream owned by its own store, mirroring imuStore. The MQTT handler
 // in mowersStore decodes the BSON payload from xbot_monitoring's gnss/stream and
@@ -14,13 +15,23 @@ import type {GnssSample} from './schemas';
 //     at their own cadence (see getGnssHistory) — the heavy satellite array is
 //     never stored per-history-point.
 
-// ~2 min at the ~2 Hz publish rate. The charts only trend accuracy / avg-C/N0 /
-// sats-used, so this is plenty without holding the satellite arrays.
-const RING_CAPACITY = 240;
+// History ring depth. The ring is filled at the full MQTT ingest rate (~4 Hz),
+// independent of the reactive publish throttle below — 1200 points ≈ 5 min,
+// enough for the Trends charts to show accuracy converging after RTK comes up.
+const RING_CAPACITY = 1200;
 
-// The GNSS stream is slow (~1-4 Hz), so unlike the 30 Hz IMU stream we don't
-// need to throttle the reactive publish — every sample can drive the skyplot.
-// We still publish only the `latest` object reactively; charts poll history.
+// React-notification rate for the reactive store. The GNSS stream arrives at
+// ~4 Hz; committing a snapshot on every sample forced every useLatestGnss
+// subscriber (skyplot SVG, two recharts trees, the maplibre map) to reconcile
+// 4x/s, which is the GNSS-page lag. Mirrors imuStore's IMU_PUBLISH_INTERVAL_MS.
+// ~2.5 Hz halves the heavy-panel reconcile rate while staying live for the
+// readouts (the data only changes meaningfully at ~1 Hz). Per-frame consumers
+// (the mini-map) read getLatestGnss on their own poll instead.
+const GNSS_PUBLISH_INTERVAL_MS = 400;
+const lastGnssPublish: Record<string, number> = {};
+
+// Stable empty satellite array — same getSnapshot-loop guard as EMPTY_HISTORY.
+const EMPTY_SATS: readonly GnssSatellite[] = [];
 
 // A trimmed-down history point. Storing the full satellite array per point
 // would balloon memory for no benefit — the charts only need these scalars.
@@ -29,6 +40,7 @@ export interface GnssHistoryPoint {
   hacc: number;
   avgCn0: number;
   used: number;
+  vis: number;
   fix: number;
 }
 
@@ -67,21 +79,22 @@ function averageCn0(sample: GnssSample): number {
 }
 
 export function pushGnssSample(mowerId: string, sampleIn: GnssSample): void {
-  // Display-smoothing guard: some firmware emits a per-epoch tick whose
-  // satellite list is momentarily empty (e.g. an NMEA GGA arriving in a window
-  // with no GSV group yet), which would blank the skyplot/signal panels ~1×/s.
-  // When a fresh sample has no satellites but the previous one did and we still
-  // have a valid fix, carry the last known sky forward — every other field
-  // (fix/dop/accuracy/position) is taken fresh from the new sample. This only
-  // bridges single empty ticks; if the stream truly stops, no new sample
-  // arrives and the page empties via the usual gnss/stream staleness path.
   const prev = liveLatest[mowerId];
-  const sample: GnssSample =
-    sampleIn.sats.length === 0 && prev && prev.sats.length > 0 && sampleIn.ft > 0
-      ? {...sampleIn, sats: prev.sats, vis: prev.vis}
-      : sampleIn;
+  // Reuse the previous satellite array reference when the sky is unchanged, so
+  // the memoized skyplot/scatter/bars panels (keyed on the sats prop identity)
+  // don't reconcile when only hacc/age/lat/lon ticked. Two cases collapse into
+  // one: (a) a momentary empty-sats tick while a valid fix continues — carry the
+  // last sky forward so the panels don't blank ~1×/s; (b) a fresh array that is
+  // shallow-equal to the previous one — keep the old reference. Either way every
+  // other field stays fresh from the new sample.
+  const reuseSats =
+    prev !== undefined &&
+    prev.sats.length > 0 &&
+    ((sampleIn.sats.length === 0 && sampleIn.ft > 0) || satsShallowEqual(prev.sats, sampleIn.sats));
+  const sample: GnssSample = reuseSats ? {...sampleIn, sats: prev.sats, vis: prev.vis} : sampleIn;
 
-  // 1) Update the full-rate buffers (no React cost for the history ring).
+  // 1) Full-rate buffers — updated on every sample (no React cost). The history
+  //    ring stays full-rate so the charts (which poll it) see every point.
   liveLatest[mowerId] = sample;
   const ring = liveHistory[mowerId] ?? (liveHistory[mowerId] = []);
   if (ring.length >= RING_CAPACITY) ring.shift();
@@ -90,12 +103,16 @@ export function pushGnssSample(mowerId: string, sampleIn: GnssSample): void {
     hacc: sample.hacc,
     avgCn0: averageCn0(sample),
     used: sample.used,
+    vis: sample.vis,
     fix: sample.ft,
   });
 
-  // 2) Publish the latest full sample for the reactive readouts (skyplot, bars,
-  //    DOP). This object is small enough (~30 sats) to publish every sample at
-  //    the GNSS stream's modest rate.
+  // 2) Gate the reactive publish to ~2.5 Hz so the heavy panels reconcile at
+  //    most that often. Date.now() is fine here — runs in the MQTT message
+  //    handler, outside React's render path.
+  const now = Date.now();
+  if (now - (lastGnssPublish[mowerId] ?? 0) < GNSS_PUBLISH_INTERVAL_MS) return;
+  lastGnssPublish[mowerId] = now;
   useGnssStore.setState((state) => ({
     latest: {...state.latest, [mowerId]: sample},
   }));
@@ -104,6 +121,7 @@ export function pushGnssSample(mowerId: string, sampleIn: GnssSample): void {
 export function clearGnssStream(mowerId: string): void {
   delete liveLatest[mowerId];
   delete liveHistory[mowerId];
+  delete lastGnssPublish[mowerId];
   useGnssStore.setState((state) => {
     if (!(mowerId in state.latest)) return state;
     const latest = {...state.latest};
@@ -116,8 +134,22 @@ export function useLatestGnss(mowerId: string | undefined): GnssSample | undefin
   return useGnssStore((s) => (mowerId ? s.latest[mowerId] : undefined));
 }
 
-// Non-reactive read for the latest sample (skyplot / bars can poll per frame if
-// they prefer, though reactive useLatestGnss is fine at this rate).
+// Narrow reactive selectors so a panel only re-renders when its slice changes.
+// zustand short-circuits via Object.is, and pushGnssSample keeps the sats array
+// reference stable across unchanged epochs, so the satellite panels stay put
+// when only position/accuracy tick.
+export function useGnssSats(mowerId: string | undefined): readonly GnssSatellite[] {
+  return useGnssStore((s) => (mowerId ? s.latest[mowerId]?.sats : undefined) ?? EMPTY_SATS);
+}
+export function useGnssDop(mowerId: string | undefined): GnssSample['dop'] | undefined {
+  return useGnssStore((s) => (mowerId ? s.latest[mowerId]?.dop : undefined));
+}
+export function useHasGnss(mowerId: string | undefined): boolean {
+  return useGnssStore((s) => (mowerId ? s.latest[mowerId] !== undefined : false));
+}
+
+// Non-reactive read for the latest sample — the mini-map polls this on its own
+// cadence instead of subscribing (keeps maplibre off the reactive path).
 export function getLatestGnss(mowerId: string | undefined): GnssSample | undefined {
   return mowerId ? liveLatest[mowerId] : undefined;
 }

@@ -3,15 +3,9 @@
 import {HeaderStat, Page, PageContent, PageHeader} from '@/components/page';
 import {outerCardStyles} from '@/lib/cardStyles';
 import {fixTypeShort} from '@/lib/gps';
-import {useLatestGnss} from '@/stores/gnssStore';
+import {useGnssDop, useGnssSats, useHasGnss, useLatestGnss} from '@/stores/gnssStore';
 import {useSelectedMower} from '@/stores/mowersStore';
-import {
-  ExpandMore,
-  GpsFixed,
-  SatelliteAlt,
-  Speed as DopIcon,
-  Tune,
-} from '@mui/icons-material';
+import {ExpandMore, GpsFixed, SatelliteAlt, Speed as DopIcon, Tune} from '@mui/icons-material';
 import {
   Accordion,
   AccordionDetails,
@@ -30,12 +24,17 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {memo, useState} from 'react';
+import {memo, useState, type ComponentType} from 'react';
+import AccuracyMiniMap from './AccuracyMiniMap';
+import Cn0ElevationScatter from './Cn0ElevationScatter';
 import ConstellationSummary from './ConstellationSummary';
 import DopPanel from './DopPanel';
-import FixHero from './FixHero';
 import GnssCharts from './GnssCharts';
+import HeadingCompass from './HeadingCompass';
 import PositionReadout from './PositionReadout';
+import RfHealthPanel from './RfHealthPanel';
+import RtkDetailPanel from './RtkDetailPanel';
+import RtkStatusHero from './RtkStatusHero';
 import Skyplot from './Skyplot';
 import SignalBars from './SignalBars';
 import {GNSS_SECTIONS, useGnssLayout, type GnssSectionId} from './useGnssLayout';
@@ -48,25 +47,87 @@ const GnssHeaderStats = memo(function GnssHeaderStats({mowerId}: {mowerId: strin
   return (
     <>
       <HeaderStat icon={<GpsFixed />} value={fixTypeShort(has ? sample!.ft : undefined)} label="Fix" />
-      <HeaderStat icon={<SatelliteAlt />} value={has ? `${sample!.used}/${sample!.vis}` : '—'} label="Sats used/visible" />
+      <HeaderStat
+        icon={<SatelliteAlt />}
+        value={has ? `${sample!.used}/${sample!.vis}` : '—'}
+        label="Sats used/visible"
+      />
       <HeaderStat icon={<DopIcon />} value={has ? sample!.hacc.toFixed(2) : '—'} label="H-accuracy (m)" />
     </>
   );
 });
 
-// A collapsible panel wrapper used in the desktop grid layout.
-function Panel({
-  title,
-  visible,
-  children,
-}: {
-  title: string;
-  visible: boolean;
-  children: React.ReactNode;
-}) {
+// ---------------------------------------------------------------------------
+// Per-panel memoized subscribers. Each subscribes only the narrow slice it
+// needs, so a GNSS sample at ~2.5 Hz re-renders only the panels whose data
+// actually changed — the page shell, grid and Panel cards never re-render at
+// stream rate. Mirrors the IMU page's memoized-subscriber pattern.
+// ---------------------------------------------------------------------------
+
+const SkyplotPanel = memo(function SkyplotPanel({mowerId}: {mowerId: string | undefined}) {
+  return <Skyplot satellites={useGnssSats(mowerId)} />;
+});
+const SignalBarsPanel = memo(function SignalBarsPanel({mowerId}: {mowerId: string | undefined}) {
+  return <SignalBars satellites={useGnssSats(mowerId)} />;
+});
+const ScatterPanel = memo(function ScatterPanel({mowerId}: {mowerId: string | undefined}) {
+  return <Cn0ElevationScatter satellites={useGnssSats(mowerId)} />;
+});
+const ConstellationPanel = memo(function ConstellationPanel({mowerId}: {mowerId: string | undefined}) {
+  return <ConstellationSummary satellites={useGnssSats(mowerId)} />;
+});
+const DopSubscriber = memo(function DopSubscriber({mowerId}: {mowerId: string | undefined}) {
+  const dop = useGnssDop(mowerId);
+  return dop ? <DopPanel dop={dop} /> : null;
+});
+const RtkDetailSubscriber = memo(function RtkDetailSubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <RtkDetailPanel sample={useLatestGnss(mowerId)} />;
+});
+const HeadingSubscriber = memo(function HeadingSubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <HeadingCompass sample={useLatestGnss(mowerId)} />;
+});
+const RfHealthSubscriber = memo(function RfHealthSubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <RfHealthPanel sample={useLatestGnss(mowerId)} />;
+});
+const PositionSubscriber = memo(function PositionSubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <PositionReadout sample={useLatestGnss(mowerId)} />;
+});
+const HeroSubscriber = memo(function HeroSubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <RtkStatusHero sample={useLatestGnss(mowerId)} />;
+});
+const MapSubscriber = memo(function MapSubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <AccuracyMiniMap mowerId={mowerId} />;
+});
+// GnssCharts polls getGnssHistory on its own interval — no subscription needed.
+const ChartsPanel = memo(function ChartsPanel() {
+  return <GnssCharts />;
+});
+
+// Module-scope registry so the panel element identities are stable across page
+// renders — only the leaf subscribers re-render on new samples. `span2` widens
+// the wide-aspect panels on large screens.
+const SECTION_COMPONENTS: Record<
+  GnssSectionId,
+  {title: string; Comp: ComponentType<{mowerId: string | undefined}>; span2?: boolean}
+> = {
+  skyplot: {title: 'Skyplot', Comp: SkyplotPanel},
+  signals: {title: 'Signal strength', Comp: SignalBarsPanel, span2: true},
+  scatter: {title: 'C/N0 vs elevation', Comp: ScatterPanel, span2: true},
+  constellations: {title: 'Constellations', Comp: ConstellationPanel},
+  rtk: {title: 'RTK detail', Comp: RtkDetailSubscriber},
+  heading: {title: 'Heading (dual antenna)', Comp: HeadingSubscriber},
+  rf: {title: 'RF health & jamming', Comp: RfHealthSubscriber},
+  map: {title: 'Position map', Comp: MapSubscriber},
+  dop: {title: 'Dilution of precision', Comp: DopSubscriber},
+  charts: {title: 'Trends', Comp: ChartsPanel as ComponentType<{mowerId: string | undefined}>},
+  position: {title: 'Position & velocity', Comp: PositionSubscriber},
+};
+
+// A collapsible panel wrapper used in the desktop grid layout. State-only; does
+// not subscribe to the stream, so it never re-renders on a sample.
+function Panel({title, children}: {title: string; children: React.ReactNode}) {
   const theme = useTheme();
   const [open, setOpen] = useState(true);
-  if (!visible) return null;
   return (
     <Card sx={{...outerCardStyles(theme), minWidth: 0}}>
       <CardContent>
@@ -104,25 +165,38 @@ function GnssFallback() {
     <Card sx={{...outerCardStyles(theme), minWidth: 0}}>
       <CardContent>
         <Alert severity="info" sx={{mb: 2}}>
-          Detailed per-satellite data isn&apos;t available from this mower. Showing the aggregate GPS status.
-          The full skyplot, signal bars and DOP breakdown need the GNSS-detail firmware/driver
-          (<code>gnss/stream</code>).
+          Detailed per-satellite data isn&apos;t available from this mower. Showing the aggregate GPS status. The full
+          skyplot, signal bars and DOP breakdown need the GNSS-detail firmware/driver (<code>gnss/stream</code>).
         </Alert>
         <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
           <Box>
-            <Typography variant="caption" color="text.secondary">Fix</Typography>
-            <Box><Chip label={fixTypeShort(fixType)} size="small" sx={{fontWeight: 600}} /></Box>
+            <Typography variant="caption" color="text.secondary">
+              Fix
+            </Typography>
+            <Box>
+              <Chip label={fixTypeShort(fixType)} size="small" sx={{fontWeight: 600}} />
+            </Box>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>Satellites</Typography>
-            <Typography variant="h6" fontWeight={700}>{sats ?? '—'}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>
+              Satellites
+            </Typography>
+            <Typography variant="h6" fontWeight={700}>
+              {sats ?? '—'}
+            </Typography>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>PDOP</Typography>
-            <Typography variant="h6" fontWeight={700}>{pdop !== undefined ? pdop.toFixed(2) : '—'}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>
+              PDOP
+            </Typography>
+            <Typography variant="h6" fontWeight={700}>
+              {pdop !== undefined ? pdop.toFixed(2) : '—'}
+            </Typography>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>Position accuracy</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>
+              Position accuracy
+            </Typography>
             <Typography variant="h6" fontWeight={700}>
               {posAccuracy != null ? `${posAccuracy.toFixed(2)} m` : '—'}
             </Typography>
@@ -133,8 +207,9 @@ function GnssFallback() {
   );
 }
 
-// The body renders the rich panels. Split into its own subscriber so it
-// re-renders on each sample while the page shell stays static.
+// The body owns layout only. It subscribes to a single boolean (has-data) so it
+// re-renders at most when the stream starts/stops, never per sample — the leaf
+// panel subscribers handle live updates.
 const GnssBody = memo(function GnssBody({
   mowerId,
   layout,
@@ -144,59 +219,67 @@ const GnssBody = memo(function GnssBody({
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const sample = useLatestGnss(mowerId);
-  const sats = sample?.sats ?? [];
+  const hasGnss = useHasGnss(mowerId);
 
-  if (sample === undefined) {
+  if (!hasGnss) {
     return <GnssFallback />;
   }
 
-  // Section content, reused by both the desktop grid and the mobile accordion.
-  const sections: {id: GnssSectionId; title: string; node: React.ReactNode}[] = [
-    {id: 'skyplot', title: 'Skyplot', node: <Skyplot satellites={sats} />},
-    {id: 'signals', title: 'Signal strength', node: <SignalBars satellites={sats} />},
-    {id: 'constellations', title: 'Constellations', node: <ConstellationSummary satellites={sats} />},
-    {id: 'dop', title: 'Dilution of precision', node: <DopPanel dop={sample.dop} />},
-    {id: 'charts', title: 'Trends', node: <GnssCharts />},
-    {id: 'position', title: 'Position & velocity', node: <PositionReadout sample={sample} />},
-  ];
-  const visibleSections = sections.filter((s) => layout[s.id]);
+  const visible = GNSS_SECTIONS.filter((s) => layout[s.id]);
 
   if (isMobile) {
     return (
       <Box sx={{mt: 2}}>
-        <FixHero sample={sample} />
+        <Card sx={{...outerCardStyles(theme), minWidth: 0}}>
+          <CardContent>
+            <HeroSubscriber mowerId={mowerId} />
+          </CardContent>
+        </Card>
         <Box sx={{mt: 2}}>
-          {visibleSections.map((s) => (
-            <Accordion key={s.id} defaultExpanded={s.id === 'skyplot'} disableGutters>
-              <AccordionSummary expandIcon={<ExpandMore />}>
-                <Typography fontWeight={600}>{s.title}</Typography>
-              </AccordionSummary>
-              <AccordionDetails>{s.node}</AccordionDetails>
-            </Accordion>
-          ))}
+          {visible.map((s) => {
+            const {title, Comp} = SECTION_COMPONENTS[s.id];
+            return (
+              <Accordion key={s.id} defaultExpanded={s.id === 'skyplot'} disableGutters>
+                <AccordionSummary expandIcon={<ExpandMore />}>
+                  <Typography fontWeight={600}>{title}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Comp mowerId={mowerId} />
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
         </Box>
       </Box>
     );
   }
 
-  // Desktop: responsive card grid. Skyplot + signals span two columns where it
-  // helps; the rest flow in a min-320px auto-fill grid.
+  // Desktop: responsive card grid. Wide-aspect panels span two columns on lg+.
   return (
     <Box sx={{mt: 2}}>
       <Card sx={{...outerCardStyles(theme), minWidth: 0, mb: 2}}>
         <CardContent>
-          <FixHero sample={sample} />
+          <HeroSubscriber mowerId={mowerId} />
         </CardContent>
       </Card>
-      <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 2, alignItems: 'start'}}>
-        {visibleSections.map((s) => (
-          <Box key={s.id} sx={{gridColumn: s.id === 'signals' ? {lg: 'span 2'} : undefined}}>
-            <Panel title={s.title} visible>
-              {s.node}
-            </Panel>
-          </Box>
-        ))}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+          gap: 2,
+          alignItems: 'start',
+        }}
+      >
+        {visible.map((s) => {
+          const {title, Comp, span2} = SECTION_COMPONENTS[s.id];
+          return (
+            <Box key={s.id} sx={{gridColumn: span2 ? {lg: 'span 2'} : undefined}}>
+              <Panel title={title}>
+                <Comp mowerId={mowerId} />
+              </Panel>
+            </Box>
+          );
+        })}
       </Box>
     </Box>
   );

@@ -3,10 +3,10 @@
 import type {GnssSatellite} from '@/stores/schemas';
 import {bandColor, bandLabel, CONSTELLATION_ORDER, constellation, gnssIdColor, svLabel} from '@/lib/gnss';
 import {Box, Tooltip, Typography, useTheme} from '@mui/material';
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 
 interface SignalBarsProps {
-  satellites: GnssSatellite[];
+  satellites: readonly GnssSatellite[];
 }
 
 // C/N0 axis: 0..55 dB-Hz covers the realistic range with headroom.
@@ -17,12 +17,13 @@ interface Group {
   sats: GnssSatellite[];
 }
 
-function groupByConstellation(sats: GnssSatellite[]): Group[] {
+function groupByConstellation(sats: readonly GnssSatellite[]): Group[] {
   const groups: Group[] = [];
   for (const gnssId of CONSTELLATION_ORDER) {
     const members = sats
       .filter((s) => s.g === gnssId)
       // Sort by SV then band so a satellite's bands sit next to each other.
+      // filter() already returned a fresh array, so this sort is local.
       .sort((a, b) => a.s - b.s || a.b - b.b);
     if (members.length > 0) groups.push({gnssId, sats: members});
   }
@@ -33,7 +34,7 @@ function groupByConstellation(sats: GnssSatellite[]): Group[] {
   return groups;
 }
 
-export default function SignalBars({satellites}: SignalBarsProps) {
+function SignalBars({satellites}: SignalBarsProps) {
   const theme = useTheme();
   const groups = useMemo(() => groupByConstellation(satellites), [satellites]);
   const tracked = satellites.filter((s) => s.c > 0).length;
@@ -106,3 +107,5 @@ export default function SignalBars({satellites}: SignalBarsProps) {
     </Box>
   );
 }
+
+export default memo(SignalBars);

@@ -64,12 +64,21 @@ export const stateSchema = z.object({
     // JSON null. x/y/heading are coerced to 0 because the marker/telemetry
     // surfaces want a concrete number. The accuracy fields stay nullable so
     // the UI can show "—" instead of a misleading "0.0 m" reading.
-    heading: z.number().nullable().transform((v) => v ?? 0),
+    heading: z
+      .number()
+      .nullable()
+      .transform((v) => v ?? 0),
     heading_accuracy: z.number().nullable(),
     heading_valid: looseBoolean,
     pos_accuracy: z.number().nullable(),
-    x: z.number().nullable().transform((v) => v ?? 0),
-    y: z.number().nullable().transform((v) => v ?? 0),
+    x: z
+      .number()
+      .nullable()
+      .transform((v) => v ?? 0),
+    y: z
+      .number()
+      .nullable()
+      .transform((v) => v ?? 0),
   }),
   // Backend R9a — extended GPS + WLAN telemetry. All optional so the schema
   // continues to parse on older xbot_monitoring builds that don't publish
@@ -395,7 +404,15 @@ export const gnssSampleSchema = z.object({
   vu: z.number().default(0),
   vh: z.number().default(0), // vehicle heading (rad)
   mh: z.number().default(0), // motion heading (rad)
-  age: z.number().default(0), // RTCM correction age (s)
+  age: z.number().default(0), // RTCM correction age (s); 0 when not reported
+  // UM982 / Unicore detail. Optional so the page keeps parsing on firmware
+  // that doesn't send them yet (they read as undefined → shown as "—").
+  base: z.number().optional(), // dual-antenna baseline length (m)
+  sol: z.number().int().optional(), // solution status: 0 none,1 single,2 DGPS,3 float,4 fixed
+  hacc_hdg: z.number().optional(), // heading accuracy / stddev (deg)
+  cutoff: z.number().optional(), // enforced elevation cutoff mask (deg); -1 = not reported
+  agc: z.array(z.number()).optional(), // per-antenna AGC: ANT1 [0..4], ANT2 [5..9]; -1 = unused band
+  jam: z.array(z.number()).optional(), // jamming: [cw_ratio 0..255, cw_flag 0/1/2]
   ts_ms: z.number(),
   sats: z.array(satelliteSchema).default([]),
 });
