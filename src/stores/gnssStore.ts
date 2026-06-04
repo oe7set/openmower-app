@@ -66,7 +66,21 @@ function averageCn0(sample: GnssSample): number {
   return n > 0 ? sum / n : 0;
 }
 
-export function pushGnssSample(mowerId: string, sample: GnssSample): void {
+export function pushGnssSample(mowerId: string, sampleIn: GnssSample): void {
+  // Display-smoothing guard: some firmware emits a per-epoch tick whose
+  // satellite list is momentarily empty (e.g. an NMEA GGA arriving in a window
+  // with no GSV group yet), which would blank the skyplot/signal panels ~1×/s.
+  // When a fresh sample has no satellites but the previous one did and we still
+  // have a valid fix, carry the last known sky forward — every other field
+  // (fix/dop/accuracy/position) is taken fresh from the new sample. This only
+  // bridges single empty ticks; if the stream truly stops, no new sample
+  // arrives and the page empties via the usual gnss/stream staleness path.
+  const prev = liveLatest[mowerId];
+  const sample: GnssSample =
+    sampleIn.sats.length === 0 && prev && prev.sats.length > 0 && sampleIn.ft > 0
+      ? {...sampleIn, sats: prev.sats, vis: prev.vis}
+      : sampleIn;
+
   // 1) Update the full-rate buffers (no React cost for the history ring).
   liveLatest[mowerId] = sample;
   const ring = liveHistory[mowerId] ?? (liveHistory[mowerId] = []);
