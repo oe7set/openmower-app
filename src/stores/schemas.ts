@@ -348,6 +348,60 @@ export const imuSampleSchema = z.object({
 export type ImuSample = z.infer<typeof imuSampleSchema>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// GNSS detail (per-satellite diagnostics)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// xbot_monitoring publishes per-satellite GNSS diagnostics on `<prefix>gnss/stream`
+// as a BSON document {d: {...}} (see gnss_detail_callback). Short keys keep the
+// ~30-row satellite array compact on the WebSocket. Every field is tolerant of
+// being absent so the page keeps parsing on firmware that predates a field.
+
+// One tracked signal. gnss_id follows the u-blox convention
+// (0 GPS, 1 SBAS, 2 Galileo, 3 BeiDou, 5 QZSS, 6 GLONASS, 255 unknown);
+// band is normalized (1 = L1/E1/B1, 2 = L2/B2I, 5 = L5/E5/B2a, 0 = unknown).
+export const satelliteSchema = z.object({
+  g: z.number().int(), // gnss_id
+  s: z.number().int(), // sv_id
+  c: z.number(), // C/N0 in dB-Hz
+  b: z.number().int().default(0), // band
+  e: z.number().default(-128), // elevation deg (-128 unknown)
+  a: z.number().default(-1), // azimuth deg (-1 unknown)
+  u: looseBoolean.default(false), // used in fix
+  hl: looseBoolean.default(true), // healthy
+});
+export type GnssSatellite = z.infer<typeof satelliteSchema>;
+
+const dopSchema = z.object({
+  g: z.number().default(0),
+  p: z.number().default(0),
+  h: z.number().default(0),
+  v: z.number().default(0),
+  t: z.number().default(0),
+});
+
+export const gnssSampleSchema = z.object({
+  ft: z.number().int().min(0).max(5).default(0), // fix_type
+  rtk: z.number().int().default(0), // 0 none, 1 float, 2 fixed
+  used: z.number().default(0), // sats used in fix
+  vis: z.number().default(0), // sats visible
+  dop: dopSchema.default({g: 0, p: 0, h: 0, v: 0, t: 0}),
+  hacc: z.number().default(0), // horizontal accuracy (m)
+  vacc: z.number().default(0), // vertical accuracy (m)
+  lat: z.number().default(0),
+  lon: z.number().default(0),
+  h: z.number().default(0), // height (m)
+  ve: z.number().default(0), // velocity ENU (m/s)
+  vn: z.number().default(0),
+  vu: z.number().default(0),
+  vh: z.number().default(0), // vehicle heading (rad)
+  mh: z.number().default(0), // motion heading (rad)
+  age: z.number().default(0), // RTCM correction age (s)
+  ts_ms: z.number(),
+  sats: z.array(satelliteSchema).default([]),
+});
+export type GnssSample = z.infer<typeof gnssSampleSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Battery / BMS telemetry
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

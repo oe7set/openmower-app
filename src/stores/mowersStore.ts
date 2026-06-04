@@ -19,6 +19,7 @@ import {
   coveragePathSchema,
   eventSchema,
   eventsSnapshotSchema,
+  gnssSampleSchema,
   imuSampleSchema,
   LegacyArea,
   LegacyMapData,
@@ -49,6 +50,7 @@ import {useDatumCacheStore} from './datumCacheStore';
 import {pruneNotifications, useNotificationsStore} from './notificationsStore';
 import {pruneSensorMower, pushSensorValue, seedAllSensorHistory} from './sensorsStore';
 import {clearImuStream, pushImuSample} from './imuStore';
+import {clearGnssStream, pushGnssSample} from './gnssStore';
 import {clearBmsTelemetry, pushBmsTelemetry} from './bmsStore';
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
@@ -79,6 +81,7 @@ export const EXPECTED_TOPICS: readonly TopicSpec[] = [
   {topic: 'actions/json', live: false},
   {topic: 'sensor_infos/json', live: false},
   {topic: 'imu/stream', live: true},
+  {topic: 'gnss/stream', live: true},
 ] as const;
 
 export type ExpectedTopic = (typeof EXPECTED_TOPICS)[number]['topic'];
@@ -253,6 +256,7 @@ export const useMowersStore = create<MowersStore>()(
         // keep their buffers — same id.)
         if (!desiredIds.has(oldMower.id)) {
           clearImuStream(oldMower.id);
+          clearGnssStream(oldMower.id);
           clearBmsTelemetry(oldMower.id);
           pruneNotifications(oldMower.id);
           pruneSensorMower(oldMower.id);
@@ -330,6 +334,7 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'events/stream');
             client.subscribe(clientMower.prefix + 'rpc/response');
             client.subscribe(clientMower.prefix + 'imu/stream');
+            client.subscribe(clientMower.prefix + 'gnss/stream');
             client.subscribe(clientMower.prefix + 'bms/json');
           }
           // The map/json topic doesn't carry the GPS datum (mower_map_service
@@ -372,7 +377,8 @@ export const useMowersStore = create<MowersStore>()(
             // ~1 Hz (see LASTSEEN_THROTTLE_MS) so the immer producer + app-wide
             // notification doesn't run 30x/s; the first stamp is immediate.
             const now = Date.now();
-            const isStreaming = seenKey === 'imu/stream' || seenKey === 'sensors/data';
+            const isStreaming =
+              seenKey === 'imu/stream' || seenKey === 'gnss/stream' || seenKey === 'sensors/data';
             const gateKey = `${mowers[idx].id}|${seenKey}`;
             const prevStamp = lastSeenStamp.get(gateKey);
             if (!isStreaming || prevStamp === undefined || now - prevStamp >= LASTSEEN_THROTTLE_MS) {
@@ -550,6 +556,19 @@ export const useMowersStore = create<MowersStore>()(
                 pushImuSample(mowers[idx].id, sample);
               } catch (e) {
                 console.warn('[mowersStore] imu/stream decode failed:', e);
+              }
+            } else if (partialTopic === 'gnss/stream') {
+              // BSON {d: {ft, rtk, used, vis, dop, ..., sats:[...]}} from
+              // xbot_monitoring's gnss_detail_callback. Decoded like imu/stream
+              // into its own gnssStore so only the GNSS page re-renders.
+              try {
+                const view = payload instanceof Uint8Array ? payload : new Uint8Array(payload);
+                const decoded = BSON.deserialize(view) as {d?: unknown};
+                const inner = decoded.d ?? decoded;
+                const sample = gnssSampleSchema.parse(inner);
+                pushGnssSample(mowers[idx].id, sample);
+              } catch (e) {
+                console.warn('[mowersStore] gnss/stream decode failed:', e);
               }
             } else if (partialTopic === 'bms/json') {
               // Merged BMS + charger snapshot from xbot_monitoring (plain JSON,
