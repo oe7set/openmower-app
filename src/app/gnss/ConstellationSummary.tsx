@@ -1,7 +1,8 @@
 'use client';
 
 import type {GnssSatellite} from '@/stores/schemas';
-import {CONSTELLATION_ORDER, constellation, constellationFlag, gnssIdColor} from '@/lib/gnss';
+import {CONSTELLATION_ORDER, constellation, gnssIdColor} from '@/lib/gnss';
+import ConstellationFlag from './ConstellationFlag';
 import {Box, Table, TableBody, TableCell, TableHead, TableRow, Typography} from '@mui/material';
 import {memo, useMemo} from 'react';
 
@@ -56,8 +57,8 @@ function ConstellationSummary({satellites}: ConstellationSummaryProps) {
           <TableRow key={r.gnssId}>
             <TableCell>
               <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                <ConstellationFlag gnssId={r.gnssId} size={18} />
                 <Box sx={{width: 10, height: 10, borderRadius: '50%', bgcolor: gnssIdColor(r.gnssId)}} />
-                <span aria-hidden>{constellationFlag(r.gnssId)}</span>
                 {constellation(r.gnssId).name}
               </Box>
             </TableCell>

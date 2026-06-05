@@ -1,7 +1,8 @@
 'use client';
 
 import type {GnssSatellite} from '@/stores/schemas';
-import {constellation, constellationFlag, gnssIdColor, svLabel} from '@/lib/gnss';
+import {constellation, gnssIdColor, svLabel} from '@/lib/gnss';
+import ConstellationFlag from './ConstellationFlag';
 import {Box, Typography, useTheme} from '@mui/material';
 import {memo, useMemo} from 'react';
 
@@ -154,11 +155,9 @@ function Skyplot({satellites}: SkyplotProps) {
       <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5, justifyContent: 'center', mt: 1}}>
         {[...new Set(sats.map((s) => s.gnssId))].map((g) => (
           <Box key={g} sx={{display: 'flex', alignItems: 'center', gap: 0.5}}>
+            <ConstellationFlag gnssId={g} size={16} />
             <Box sx={{width: 10, height: 10, borderRadius: '50%', bgcolor: gnssIdColor(g)}} />
             <Typography variant="caption" color="text.secondary">
-              <span aria-hidden style={{marginRight: 2}}>
-                {constellationFlag(g)}
-              </span>
               {constellation(g).short}
             </Typography>
           </Box>
