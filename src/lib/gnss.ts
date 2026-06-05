@@ -18,15 +18,18 @@ export interface ConstellationMeta {
   prefix: string;
   // Stable colour, roughly aligned with u-center's palette.
   color: string;
+  // Country/region flag emoji for the operating constellation, UPrecise-style.
+  // A satellite icon stands in for the multi-national SBAS augmentation.
+  flag: string;
 }
 
 const CONSTELLATIONS: Record<number, ConstellationMeta> = {
-  [GNSS_GPS]: {id: GNSS_GPS, name: 'GPS', short: 'GPS', prefix: 'G', color: '#1565c0'},
-  [GNSS_GLONASS]: {id: GNSS_GLONASS, name: 'GLONASS', short: 'GLO', prefix: 'R', color: '#2e7d32'},
-  [GNSS_GALILEO]: {id: GNSS_GALILEO, name: 'Galileo', short: 'GAL', prefix: 'E', color: '#ef6c00'},
-  [GNSS_BEIDOU]: {id: GNSS_BEIDOU, name: 'BeiDou', short: 'BDS', prefix: 'B', color: '#c62828'},
-  [GNSS_QZSS]: {id: GNSS_QZSS, name: 'QZSS', short: 'QZSS', prefix: 'Q', color: '#6a1b9a'},
-  [GNSS_SBAS]: {id: GNSS_SBAS, name: 'SBAS', short: 'SBAS', prefix: 'S', color: '#607d8b'},
+  [GNSS_GPS]: {id: GNSS_GPS, name: 'GPS', short: 'GPS', prefix: 'G', color: '#1565c0', flag: '🇺🇸'},
+  [GNSS_GLONASS]: {id: GNSS_GLONASS, name: 'GLONASS', short: 'GLO', prefix: 'R', color: '#2e7d32', flag: '🇷🇺'},
+  [GNSS_GALILEO]: {id: GNSS_GALILEO, name: 'Galileo', short: 'GAL', prefix: 'E', color: '#ef6c00', flag: '🇪🇺'},
+  [GNSS_BEIDOU]: {id: GNSS_BEIDOU, name: 'BeiDou', short: 'BDS', prefix: 'B', color: '#c62828', flag: '🇨🇳'},
+  [GNSS_QZSS]: {id: GNSS_QZSS, name: 'QZSS', short: 'QZSS', prefix: 'Q', color: '#6a1b9a', flag: '🇯🇵'},
+  [GNSS_SBAS]: {id: GNSS_SBAS, name: 'SBAS', short: 'SBAS', prefix: 'S', color: '#607d8b', flag: '🛰️'},
 };
 
 const UNKNOWN_CONSTELLATION: ConstellationMeta = {
@@ -35,6 +38,7 @@ const UNKNOWN_CONSTELLATION: ConstellationMeta = {
   short: '?',
   prefix: 'U',
   color: '#9e9e9e',
+  flag: '🛰️',
 };
 
 // Order constellations are displayed in (summaries, signal bars).
@@ -50,6 +54,12 @@ export function gnssIdName(gnssId: number): string {
 
 export function gnssIdColor(gnssId: number): string {
   return constellation(gnssId).color;
+}
+
+// Flag emoji for a constellation, used as a UPrecise-style visual marker
+// alongside the short code in the skyplot legend, signal bars and summary.
+export function constellationFlag(gnssId: number): string {
+  return constellation(gnssId).flag;
 }
 
 // u-center-style satellite label, e.g. "G12", "R08", "E07".

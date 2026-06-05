@@ -1,7 +1,15 @@
 'use client';
 
 import type {GnssSatellite} from '@/stores/schemas';
-import {bandColor, bandLabel, CONSTELLATION_ORDER, constellation, gnssIdColor, svLabel} from '@/lib/gnss';
+import {
+  bandColor,
+  bandLabel,
+  CONSTELLATION_ORDER,
+  constellation,
+  constellationFlag,
+  gnssIdColor,
+  svLabel,
+} from '@/lib/gnss';
 import {Box, Tooltip, Typography, useTheme} from '@mui/material';
 import {memo, useMemo} from 'react';
 
@@ -98,6 +106,9 @@ function SignalBars({satellites}: SignalBarsProps) {
             <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center', mt: 0.5}}>
               <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: gnssIdColor(group.gnssId)}} />
               <Typography variant="caption" fontWeight={600} color="text.secondary">
+                <span aria-hidden style={{marginRight: 2}}>
+                  {constellationFlag(group.gnssId)}
+                </span>
                 {constellation(group.gnssId).short}
               </Typography>
             </Box>

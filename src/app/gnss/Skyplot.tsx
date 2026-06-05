@@ -1,7 +1,7 @@
 'use client';
 
 import type {GnssSatellite} from '@/stores/schemas';
-import {constellation, gnssIdColor, svLabel} from '@/lib/gnss';
+import {constellation, constellationFlag, gnssIdColor, svLabel} from '@/lib/gnss';
 import {Box, Typography, useTheme} from '@mui/material';
 import {memo, useMemo} from 'react';
 
@@ -25,8 +25,12 @@ interface SkySat {
 function dedupeForSky(sats: readonly GnssSatellite[]): SkySat[] {
   const byKey = new Map<string, SkySat>();
   for (const s of sats) {
-    // Skip satellites with no known sky position — they can't be plotted.
-    if (s.e <= -90 || s.a < 0) continue;
+    // Skip satellites with no known sky position — they can't be plotted. The
+    // (elevation 0, azimuth 0) pair is an "unknown position" placeholder (a
+    // tracked satellite whose sky position the receiver hasn't reported yet), not
+    // a real fix at due-North on the horizon; plotting it draws a ghost dot at
+    // North 0°.
+    if (s.e <= -90 || s.a < 0 || (s.e === 0 && s.a === 0)) continue;
     const key = `${s.g}-${s.s}`;
     const existing = byKey.get(key);
     if (existing) {
@@ -152,6 +156,9 @@ function Skyplot({satellites}: SkyplotProps) {
           <Box key={g} sx={{display: 'flex', alignItems: 'center', gap: 0.5}}>
             <Box sx={{width: 10, height: 10, borderRadius: '50%', bgcolor: gnssIdColor(g)}} />
             <Typography variant="caption" color="text.secondary">
+              <span aria-hidden style={{marginRight: 2}}>
+                {constellationFlag(g)}
+              </span>
               {constellation(g).short}
             </Typography>
           </Box>
