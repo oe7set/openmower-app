@@ -28,6 +28,7 @@ import {memo, useState, type ComponentType} from 'react';
 import AccuracyMiniMap from './AccuracyMiniMap';
 import Cn0ElevationScatter from './Cn0ElevationScatter';
 import ConstellationSummary from './ConstellationSummary';
+import DiscreteTrajectory from './DiscreteTrajectory';
 import DopPanel from './DopPanel';
 import GnssCharts from './GnssCharts';
 import HeadingCompass from './HeadingCompass';
@@ -98,6 +99,10 @@ const HeroSubscriber = memo(function HeroSubscriber({mowerId}: {mowerId: string 
 const MapSubscriber = memo(function MapSubscriber({mowerId}: {mowerId: string | undefined}) {
   return <AccuracyMiniMap mowerId={mowerId} />;
 });
+// Polls getGnssPositionHistory on its own interval — no store subscription.
+const TrajectorySubscriber = memo(function TrajectorySubscriber({mowerId}: {mowerId: string | undefined}) {
+  return <DiscreteTrajectory mowerId={mowerId} />;
+});
 // GnssCharts polls getGnssHistory on its own interval — no subscription needed.
 const ChartsPanel = memo(function ChartsPanel() {
   return <GnssCharts />;
@@ -118,6 +123,7 @@ const SECTION_COMPONENTS: Record<
   heading: {title: 'Heading (dual antenna)', Comp: HeadingSubscriber},
   rf: {title: 'RF health & jamming', Comp: RfHealthSubscriber},
   map: {title: 'Position map', Comp: MapSubscriber},
+  trajectory: {title: 'Discrete trajectory', Comp: TrajectorySubscriber},
   dop: {title: 'Dilution of precision', Comp: DopSubscriber},
   charts: {title: 'Trends', Comp: ChartsPanel as ComponentType<{mowerId: string | undefined}>},
   position: {title: 'Position & velocity', Comp: PositionSubscriber},

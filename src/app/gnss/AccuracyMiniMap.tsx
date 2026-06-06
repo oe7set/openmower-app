@@ -2,6 +2,7 @@
 
 import {mapStyles} from '@/components/map/mapStyles';
 import {getLatestGnss} from '@/stores/gnssStore';
+import {fallbackDatum} from '@/stores/schemas';
 import {useUiStore} from '@/stores/uiStore';
 import type {GnssSample} from '@/stores/schemas';
 import {solutionStep} from '@/lib/gnss';
@@ -84,25 +85,22 @@ export default function AccuracyMiniMap({mowerId}: AccuracyMiniMapProps) {
 
   // Recenter only when the position actually moved beyond ~5 cm (≈5e-7°), so a
   // stationary mower under RTK jitter doesn't thrash maplibre with overlapping
-  // easeTo animations.
+  // easeTo animations. The very first fix snaps instantly (jumpTo) — the map
+  // starts at the fallback datum, so an easeTo would crawl across the world.
   useEffect(() => {
     if (!mapRef.current || !hasPos) return;
     const prev = lastCenter.current;
     const moved = !prev || Math.abs(lat - prev.lat) > 5e-7 || Math.abs(lon - prev.lon) > 5e-7;
     if (!moved) return;
+    const isFirst = prev === null;
     lastCenter.current = {lon, lat};
-    mapRef.current.easeTo({center: [lon, lat], duration: 400});
+    if (isFirst) mapRef.current.jumpTo({center: [lon, lat], zoom: 19});
+    else mapRef.current.easeTo({center: [lon, lat], duration: 400});
   }, [hasPos, lon, lat]);
 
-  if (!hasPos) {
-    return (
-      <Box sx={{height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-        <Typography variant="body2" color="text.disabled">
-          Waiting for a position fix…
-        </Typography>
-      </Box>
-    );
-  }
+  // Initial center: real fix when we have one, else the fallback datum so the
+  // map renders land instead of zooming to null island at (0, 0).
+  const initialCenter: [number, number] = hasPos ? [lon, lat] : [fallbackDatum.long, fallbackDatum.lat];
 
   return (
     <Box sx={{position: 'relative', height: 260, borderRadius: 1, overflow: 'hidden'}}>
@@ -110,13 +108,26 @@ export default function AccuracyMiniMap({mowerId}: AccuracyMiniMapProps) {
         ref={mapRef}
         style={{width: '100%', height: '100%'}}
         mapStyle={mapStyles[mapStyle] ?? mapStyles['plain']}
-        initialCenter={[lon, lat]}
+        initialCenter={initialCenter}
         initialZoom={19}
         initialAttributionControl={false}
         maxZoom={25}
         initialPitchWithRotate={false}
         dragRotate={false}
-        onLoad={(e) => e.target.touchZoomRotate.disableRotation()}
+        onLoad={(e) => {
+          const map = e.target;
+          map.touchZoomRotate.disableRotation();
+          // The mini-map lives inside a collapsible panel; maplibre sizes its
+          // WebGL canvas once at creation, so a mount during the collapse height
+          // animation (or before layout settles) leaves a blank/zero-size canvas.
+          // Resize once after layout, then track the container so reopening the
+          // panel or resizing the window keeps the canvas correct.
+          requestAnimationFrame(() => map.resize());
+          const container = map.getContainer();
+          const ro = new ResizeObserver(() => map.resize());
+          ro.observe(container);
+          map.once('remove', () => ro.disconnect());
+        }}
       >
         {circle && (
           <>
@@ -130,33 +141,55 @@ export default function AccuracyMiniMap({mowerId}: AccuracyMiniMapProps) {
             <RLayer id="gnss-acc-line" type="line" source="gnss-acc" paint={{'line-color': color, 'line-width': 1.5}} />
           </>
         )}
-        <RSource id="gnss-pos" type="geojson" data={point} />
-        <RLayer
-          id="gnss-pos-dot"
-          type="circle"
-          source="gnss-pos"
-          paint={{
-            'circle-radius': 5,
-            'circle-color': color,
-            'circle-stroke-color': '#fff',
-            'circle-stroke-width': 2,
-          }}
-        />
+        {hasPos && (
+          <>
+            <RSource id="gnss-pos" type="geojson" data={point} />
+            <RLayer
+              id="gnss-pos-dot"
+              type="circle"
+              source="gnss-pos"
+              paint={{
+                'circle-radius': 5,
+                'circle-color': color,
+                'circle-stroke-color': '#fff',
+                'circle-stroke-width': 2,
+              }}
+            />
+          </>
+        )}
       </RMap>
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: 6,
-          left: 6,
-          px: 1,
-          py: 0.25,
-          borderRadius: 1,
-          bgcolor: 'rgba(0,0,0,0.55)',
-          color: '#fff',
-        }}
-      >
-        <Typography variant="caption">±{(sample?.hacc ?? 0).toFixed(2)} m</Typography>
-      </Box>
+      {hasPos ? (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 6,
+            left: 6,
+            px: 1,
+            py: 0.25,
+            borderRadius: 1,
+            bgcolor: 'rgba(0,0,0,0.55)',
+            color: '#fff',
+          }}
+        >
+          <Typography variant="caption">±{(sample?.hacc ?? 0).toFixed(2)} m</Typography>
+        </Box>
+      ) : (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'rgba(0,0,0,0.35)',
+            pointerEvents: 'none',
+          }}
+        >
+          <Typography variant="body2" sx={{color: 'rgba(255,255,255,0.85)'}}>
+            Waiting for a position fix…
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 }

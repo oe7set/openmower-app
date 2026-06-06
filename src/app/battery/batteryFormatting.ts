@@ -81,12 +81,13 @@ export function computeSoh(t: BmsTelemetry | undefined): number | null {
 export type ChargeFlow = 'charging' | 'discharging' | 'idle';
 
 // Classifies pack current into a charge-flow direction. Bms.current is positive
-// on discharge; a small dead-band avoids flickering around zero.
+// while charging (matches the Sabo BMS firmware, sabo_bms_driver.cpp); a small
+// dead-band avoids flickering around zero.
 export function chargeFlow(currentA: number | undefined): ChargeFlow {
   if (typeof currentA !== 'number') return 'idle';
   const deadband = 0.05; // A
-  if (currentA > deadband) return 'discharging';
-  if (currentA < -deadband) return 'charging';
+  if (currentA > deadband) return 'charging';
+  if (currentA < -deadband) return 'discharging';
   return 'idle';
 }
 

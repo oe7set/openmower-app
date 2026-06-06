@@ -14,6 +14,7 @@ export type GnssSectionId =
   | 'rf'
   | 'scatter'
   | 'map'
+  | 'trajectory'
   | 'dop'
   | 'charts'
   | 'position';
@@ -27,6 +28,7 @@ export const GNSS_SECTIONS: {id: GnssSectionId; label: string}[] = [
   {id: 'heading', label: 'Heading (dual antenna)'},
   {id: 'rf', label: 'RF health & jamming'},
   {id: 'map', label: 'Position map'},
+  {id: 'trajectory', label: 'Discrete trajectory'},
   {id: 'dop', label: 'Dilution of precision'},
   {id: 'charts', label: 'Trends'},
   {id: 'position', label: 'Position & velocity'},
@@ -43,6 +45,7 @@ const DEFAULT_LAYOUT: GnssLayout = {
   heading: true,
   rf: true,
   map: true,
+  trajectory: true,
   dop: true,
   charts: true,
   position: true,

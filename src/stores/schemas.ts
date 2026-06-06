@@ -435,7 +435,7 @@ export const bmsTelemetrySchema = z.object({
   ts_ms: z.number().optional(),
   // Pack scalars (from mower_msgs/Bms).
   voltage: z.number().optional(),
-  current: z.number().optional(), // +discharge / -charge
+  current: z.number().optional(), // +charge / -discharge
   relative_state_of_charge: z.number().optional(), // 0..1
   remaining_capacity: z.number().optional(), // Ah
   full_charge_capacity: z.number().optional(), // Ah

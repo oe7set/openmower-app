@@ -44,6 +44,24 @@ export interface GnssHistoryPoint {
   fix: number;
 }
 
+// A position-only history point for the discrete-trajectory jitter plot. Kept in
+// a separate, decimated ring (see POS_RING_CAPACITY / POS_PUSH_INTERVAL_MS) so a
+// longer time window can be retained than the full-rate trends ring above without
+// blowing up memory — the plot only needs lat/lon and the reported accuracy.
+export interface GnssPosPoint {
+  ts: number;
+  lat: number;
+  lon: number;
+  hacc: number;
+}
+
+// Position-ring depth and decimation. The trajectory plot keeps up to an hour of
+// fixes; at ~2 Hz that is 7200 points (~0.2 MB), enough to watch stationary RTK
+// jitter accumulate over a long observation. Decimated from the ~4 Hz stream.
+const POS_RING_CAPACITY = 7200;
+const POS_PUSH_INTERVAL_MS = 500;
+const lastPosPush: Record<string, number> = {};
+
 // Stable empty array reused across renders. Returning a fresh `[]` from a
 // Zustand selector each call would make React's getSnapshot detect a new value
 // every render and abort with "Maximum update depth exceeded".
@@ -53,6 +71,7 @@ const EMPTY_HISTORY: readonly GnssHistoryPoint[] = [];
 // mutating them in place is free; the reactive store mirrors only `latest`.
 const liveLatest: Record<string, GnssSample> = {};
 const liveHistory: Record<string, GnssHistoryPoint[]> = {};
+const livePosHistory: Record<string, GnssPosPoint[]> = {};
 
 interface GnssState {
   // Keyed by mowerId. Only `latest` is published reactively (consumed by
@@ -107,7 +126,21 @@ export function pushGnssSample(mowerId: string, sampleIn: GnssSample): void {
     fix: sample.ft,
   });
 
-  // 2) Gate the reactive publish to ~2.5 Hz so the heavy panels reconcile at
+  // 2) Decimated position ring for the discrete-trajectory plot. Only fixes with
+  //    a real position are kept, and only at ~2 Hz, so an hour of jitter fits in
+  //    a bounded buffer. Date.now() is fine here — outside React's render path.
+  const nowPos = Date.now();
+  if (
+    (sample.lat !== 0 || sample.lon !== 0) &&
+    nowPos - (lastPosPush[mowerId] ?? 0) >= POS_PUSH_INTERVAL_MS
+  ) {
+    lastPosPush[mowerId] = nowPos;
+    const posRing = livePosHistory[mowerId] ?? (livePosHistory[mowerId] = []);
+    if (posRing.length >= POS_RING_CAPACITY) posRing.shift();
+    posRing.push({ts: sample.ts_ms, lat: sample.lat, lon: sample.lon, hacc: sample.hacc});
+  }
+
+  // 3) Gate the reactive publish to ~2.5 Hz so the heavy panels reconcile at
   //    most that often. Date.now() is fine here — runs in the MQTT message
   //    handler, outside React's render path.
   const now = Date.now();
@@ -121,6 +154,8 @@ export function pushGnssSample(mowerId: string, sampleIn: GnssSample): void {
 export function clearGnssStream(mowerId: string): void {
   delete liveLatest[mowerId];
   delete liveHistory[mowerId];
+  delete livePosHistory[mowerId];
+  delete lastPosPush[mowerId];
   delete lastGnssPublish[mowerId];
   useGnssStore.setState((state) => {
     if (!(mowerId in state.latest)) return state;
@@ -159,4 +194,22 @@ export function getLatestGnss(mowerId: string | undefined): GnssSample | undefin
 export function getGnssHistory(mowerId: string | undefined): readonly GnssHistoryPoint[] {
   const ring = mowerId ? liveHistory[mowerId] : undefined;
   return ring ? ring.slice() : EMPTY_HISTORY;
+}
+
+// Stable empty array — same getSnapshot-loop guard as EMPTY_HISTORY.
+const EMPTY_POS_HISTORY: readonly GnssPosPoint[] = [];
+
+// Non-reactive position-history read for the discrete-trajectory plot, polled on
+// its own cadence. Returns a fresh slice so the caller's memo recomputes.
+export function getGnssPositionHistory(mowerId: string | undefined): readonly GnssPosPoint[] {
+  const ring = mowerId ? livePosHistory[mowerId] : undefined;
+  return ring ? ring.slice() : EMPTY_POS_HISTORY;
+}
+
+// Reset just the trajectory ring (the plot's clear button) without tearing down
+// the live stream or the trends history.
+export function clearGnssPositionHistory(mowerId: string | undefined): void {
+  if (!mowerId) return;
+  delete livePosHistory[mowerId];
+  delete lastPosPush[mowerId];
 }
