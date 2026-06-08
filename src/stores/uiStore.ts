@@ -1,5 +1,6 @@
 import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
+import {DEFAULT_PILOT_METRIC_IDS} from '@/app/pilot/sensorMetrics';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type Units = 'metric' | 'imperial';
@@ -10,6 +11,9 @@ export type Density = 'comfortable' | 'compact';
 export type RadiusMode = 'sharp' | 'standard' | 'soft';
 export type MotionMode = 'system' | 'full' | 'off';
 export type PageHeaderStyle = 'hero' | 'flat' | 'minimal';
+// Pilot-page sensor bar placement: a free-dragging floating pill, or docked to
+// the top/bottom edge of the content area (full width, not draggable).
+export type PilotSensorPosition = 'floating' | 'top' | 'bottom';
 // Tone-mapping modes exposed in the IMU 3D viewer's look controls. Stored as a
 // string union (not the numeric THREE.*ToneMapping enums) so the persisted
 // value stays stable across three.js upgrades; the viewer maps it to the enum.
@@ -47,6 +51,17 @@ interface UiStore {
   showCoveragePreview: boolean;
   /** Cap for teleop velocity in [0, 1]. The /drive slider writes this. */
   teleopSpeedCap: number;
+
+  // Pilot-page floating sensor bar preferences.
+  /** 1 = single scrolling row, 2 = wrap onto (max) two rows, 'multi' = wrap
+      onto as many rows as needed. */
+  pilotSensorRows: 1 | 2 | 'multi';
+  /** Ordered list of enabled metric ids (see app/pilot/sensorMetrics.ts). */
+  pilotSensorMetricIds: string[];
+  /** Background opacity of the bar in [0.2, 1]. */
+  pilotSensorOpacity: number;
+  /** Floating (draggable) or docked to the top/bottom edge. */
+  pilotSensorPosition: PilotSensorPosition;
 
   // Heatmap-page overlay toggles. The three layers are independent and may be
   // combined; the grid (binned) heatmap is the default look, points and the
@@ -102,6 +117,11 @@ interface UiStore {
   setShowPatternPreview: (v: boolean) => void;
   setShowCoveragePreview: (v: boolean) => void;
   setTeleopSpeedCap: (v: number) => void;
+
+  setPilotSensorRows: (v: 1 | 2 | 'multi') => void;
+  setPilotSensorMetricIds: (v: string[]) => void;
+  setPilotSensorOpacity: (v: number) => void;
+  setPilotSensorPosition: (v: PilotSensorPosition) => void;
 
   setHeatmapShowGrid: (v: boolean) => void;
   setHeatmapShowPoints: (v: boolean) => void;
@@ -182,6 +202,10 @@ export const useUiStore = create<UiStore>()(
       showPatternPreview: false,
       showCoveragePreview: true,
       teleopSpeedCap: 0.6,
+      pilotSensorRows: 1,
+      pilotSensorMetricIds: DEFAULT_PILOT_METRIC_IDS,
+      pilotSensorOpacity: 0.6,
+      pilotSensorPosition: 'floating',
       heatmapShowGrid: true,
       heatmapShowPoints: false,
       heatmapShowPath: false,
@@ -197,6 +221,10 @@ export const useUiStore = create<UiStore>()(
       setShowPatternPreview: (showPatternPreview) => set({showPatternPreview}),
       setShowCoveragePreview: (showCoveragePreview) => set({showCoveragePreview}),
       setTeleopSpeedCap: (teleopSpeedCap) => set({teleopSpeedCap: Math.max(0, Math.min(1, teleopSpeedCap))}),
+      setPilotSensorRows: (pilotSensorRows) => set({pilotSensorRows}),
+      setPilotSensorMetricIds: (pilotSensorMetricIds) => set({pilotSensorMetricIds}),
+      setPilotSensorOpacity: (v) => set({pilotSensorOpacity: Math.max(0.2, Math.min(1, v))}),
+      setPilotSensorPosition: (pilotSensorPosition) => set({pilotSensorPosition}),
       setHeatmapShowGrid: (heatmapShowGrid) => set({heatmapShowGrid}),
       setHeatmapShowPoints: (heatmapShowPoints) => set({heatmapShowPoints}),
       setHeatmapShowPath: (heatmapShowPath) => set({heatmapShowPath}),

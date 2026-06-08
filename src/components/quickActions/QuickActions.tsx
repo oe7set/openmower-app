@@ -6,9 +6,11 @@ import {Mower, useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {
   ExitToApp as AbortDockIcon,
   Login as AbortUndockIcon,
+  Logout as ExitRecordIcon,
   Home as HomeIcon,
   Pause as PauseIcon,
   PlayArrow as PlayIcon,
+  RadioButtonChecked as RecordIcon,
   SkipNext as SkipIcon,
   Stop as StopIcon,
   StopCircle as StopCircleIcon,
@@ -56,6 +58,8 @@ const ALL_BUTTONS: readonly ButtonSpec[] = [
   {id: MOWER_ACTIONS.abortToIdle, label: 'Stop', icon: <StopCircleIcon />, color: 'warning', variant: 'outlined', gated: true},
   {id: MOWER_ACTIONS.abortDocking, label: 'Abort docking', icon: <AbortDockIcon />, color: 'info', variant: 'outlined', gated: true},
   {id: MOWER_ACTIONS.abortUndocking, label: 'Abort undocking', icon: <AbortUndockIcon />, color: 'info', variant: 'outlined', gated: true},
+  {id: MOWER_ACTIONS.startAreaRecording, label: 'Record area', icon: <RecordIcon />, color: 'info', variant: 'outlined', gated: true},
+  {id: MOWER_ACTIONS.arExit, label: 'Exit recording', icon: <ExitRecordIcon />, color: 'info', variant: 'outlined', gated: true},
   {id: RPC_RETURN_HOME, label: 'Return home', icon: <HomeIcon />, color: 'secondary', variant: 'contained', gated: false},
   {id: MOWER_ACTIONS.setEmergency, label: 'Emergency', icon: <StopIcon />, color: 'error', variant: 'outlined', gated: true},
 ];

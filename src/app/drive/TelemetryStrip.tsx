@@ -133,7 +133,15 @@ function MetricPill({icon, label, value, color = 'default'}: MetricPillProps) {
   );
 }
 
-export default function TelemetryStrip() {
+interface TelemetryStripProps {
+  // 'banner' (default) is the sticky, full-bleed strip used on /drive. 'plain'
+  // drops the sticky positioning, negative margins and backdrop so the row of
+  // pills can be embedded inside another container (e.g. the Pilot page's
+  // draggable FloatingSensorBar, which provides its own chrome).
+  variant?: 'banner' | 'plain';
+}
+
+export default function TelemetryStrip({variant = 'banner'}: TelemetryStripProps) {
   const theme = useTheme();
   const mowerId = useSelectedMower((s) => s?.id);
   // Subscribe to scalar slices instead of the whole state object so the strip
@@ -158,22 +166,26 @@ export default function TelemetryStrip() {
     [wifiSignalDbm, wifiLinkQuality],
   );
 
+  const bannerSx =
+    variant === 'banner'
+      ? {
+          position: 'sticky' as const,
+          top: 0,
+          zIndex: 3,
+          // Pull out to the PageContent edges so the strip looks like a banner.
+          mx: {xs: -2, md: -3},
+          px: {xs: 2, md: 3},
+          py: 1,
+          backdropFilter: 'blur(8px)',
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(15,17,18,0.78)' : 'rgba(255,255,255,0.78)',
+          borderBottom: `1px solid ${theme.palette.divider}`,
+        }
+      : {};
+
   return (
     <Box
       sx={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 3,
-        // Pull out to the PageContent edges so the strip looks like a banner.
-        mx: {xs: -2, md: -3},
-        px: {xs: 2, md: 3},
-        py: 1,
-        backdropFilter: 'blur(8px)',
-        bgcolor:
-          theme.palette.mode === 'dark'
-            ? 'rgba(15,17,18,0.78)'
-            : 'rgba(255,255,255,0.78)',
-        borderBottom: `1px solid ${theme.palette.divider}`,
+        ...bannerSx,
         // Mobile: let the strip scroll horizontally instead of wrapping —
         // each pill stays readable, the user swipes to see the rest.
         display: 'flex',

@@ -47,9 +47,14 @@ interface MowerMapProps {
   mapData: MapData;
   saveMapToMower: () => Promise<void>;
   sx: SxProps;
+  // When true, the map renders as a chrome-less, display-only embed: no edit
+  // button, no right-hand layer/style/area controls, no import/export, and no
+  // built-in teleop joystick. Used by the Pilot page, which lays the map as a
+  // translucent overlay and provides its own controls. Pan/zoom stay enabled.
+  embedded?: boolean;
 }
 
-export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
+export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerMapProps) {
   const mowerId = useSelectedMower((s) => s?.id);
   const cachedDatum = useDatumCacheStore((s) => (mowerId ? s.byMower[mowerId] : undefined));
   const realDatum = mapData.datum ?? cachedDatum;
@@ -73,7 +78,8 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const plannedPath = useSelectedMower((s) => s?.plannedPath ?? []);
   const coveragePath = useSelectedMower((s) => s?.coveragePath ?? []);
   const mowingTrail = useSelectedMower((s) => s?.mowingTrail ?? []);
-  const showTeleop = currentState === 'AREA_RECORDING' && !editMode;
+  // Embedded mode brings its own joystick (Pilot page), so suppress the map's.
+  const showTeleop = currentState === 'AREA_RECORDING' && !editMode && !embedded;
   const areas = useMemo(
     () => features.features.filter((feature) => feature.geometry.type === 'Polygon') as Feature<Polygon, AreaProps>[],
     [features],
@@ -309,88 +315,97 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
           userProperties={true}
           onFeaturesCreated={handleFeaturesCreated}
         />
-        {/* Left controls */}
+        {/* Left controls — hidden in embedded mode (Pilot is a display-only,
+            non-editing overlay). */}
         {editMode ? (
           <EditControls areas={areas} saveMapToMower={saveMapToMower} />
         ) : (
-          <>
-            <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
-            {canStartRecording && (
-              <ControlButton
-                position="top-left"
-                spaced
-                icon={PlayCircleIcon}
-                title="Start area recording — drive the mower around the perimeter to capture a new mowing area"
-                onClick={() => {
-                  const {mowers, selected} = useMowersStore.getState();
-                  mowers[selected]?.publishAction(MOWER_ACTIONS.startAreaRecording);
-                }}
-                style={{
-                  color: theme.palette.primary.main,
-                  boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
-                }}
-              />
-            )}
-          </>
+          !embedded && (
+            <>
+              <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
+              {canStartRecording && (
+                <ControlButton
+                  position="top-left"
+                  spaced
+                  icon={PlayCircleIcon}
+                  title="Start area recording — drive the mower around the perimeter to capture a new mowing area"
+                  onClick={() => {
+                    const {mowers, selected} = useMowersStore.getState();
+                    mowers[selected]?.publishAction(MOWER_ACTIONS.startAreaRecording);
+                  }}
+                  style={{
+                    color: theme.palette.primary.main,
+                    boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
+                  }}
+                />
+              )}
+            </>
+          )
         )}
 
-        {/* Right controls */}
-        <RFullscreenControl />
-        <ControlButton
-          position="top-right"
-          icon={FocusIcon}
-          title="Fit to bounds"
-          onClick={() => fitToBounds(false, padding)}
-        />
-        <MapStyleSelector />
-        <ControlButton
-          position="top-right"
-          icon={LayoutListIcon}
-          title="Show area list"
-          active={showAreaList}
-          onClick={() => setShowAreaList(!showAreaList)}
-        />
-        <ControlButton
-          position="top-right"
-          spaced
-          icon={RouteIcon}
-          title="Show planned path"
-          active={showPlannedPath}
-          onClick={() => setShowPlannedPath(!showPlannedPath)}
-        />
-        <ControlButton
-          position="top-right"
-          icon={GridIcon}
-          title="Show coverage path"
-          active={showCoveragePath}
-          onClick={() => setShowCoveragePath(!showCoveragePath)}
-        />
-        <ControlButton
-          position="top-right"
-          icon={ActivityIcon}
-          title="Show mowed trail"
-          active={showMowingTrail}
-          onClick={() => setShowMowingTrail(!showMowingTrail)}
-        />
-        <ControlButton
-          position="top-right"
-          icon={SquareIcon}
-          title="Show mowing pattern preview"
-          active={showPatternPreview}
-          onClick={() => setShowPatternPreview(!showPatternPreview)}
-        />
-        {coveragePreview && (
-          <ControlButton
-            position="top-right"
-            icon={SplineIcon}
-            title="Show coverage path preview (slic3r)"
-            active={showCoveragePreview}
-            onClick={() => setShowCoveragePreview(!showCoveragePreview)}
-          />
+        {/* Right controls — the layer/style/area/import/export chrome is
+            suppressed in embedded mode so it doesn't collide with the host's
+            own control cluster (e.g. the Pilot page). Pan/zoom stay enabled. */}
+        {!embedded && (
+          <>
+            <RFullscreenControl />
+            <ControlButton
+              position="top-right"
+              icon={FocusIcon}
+              title="Fit to bounds"
+              onClick={() => fitToBounds(false, padding)}
+            />
+            <MapStyleSelector />
+            <ControlButton
+              position="top-right"
+              icon={LayoutListIcon}
+              title="Show area list"
+              active={showAreaList}
+              onClick={() => setShowAreaList(!showAreaList)}
+            />
+            <ControlButton
+              position="top-right"
+              spaced
+              icon={RouteIcon}
+              title="Show planned path"
+              active={showPlannedPath}
+              onClick={() => setShowPlannedPath(!showPlannedPath)}
+            />
+            <ControlButton
+              position="top-right"
+              icon={GridIcon}
+              title="Show coverage path"
+              active={showCoveragePath}
+              onClick={() => setShowCoveragePath(!showCoveragePath)}
+            />
+            <ControlButton
+              position="top-right"
+              icon={ActivityIcon}
+              title="Show mowed trail"
+              active={showMowingTrail}
+              onClick={() => setShowMowingTrail(!showMowingTrail)}
+            />
+            <ControlButton
+              position="top-right"
+              icon={SquareIcon}
+              title="Show mowing pattern preview"
+              active={showPatternPreview}
+              onClick={() => setShowPatternPreview(!showPatternPreview)}
+            />
+            {coveragePreview && (
+              <ControlButton
+                position="top-right"
+                icon={SplineIcon}
+                title="Show coverage path preview (slic3r)"
+                active={showCoveragePreview}
+                onClick={() => setShowCoveragePreview(!showCoveragePreview)}
+              />
+            )}
+            <DownloadButton />
+            <UploadButton />
+            <IssuesButton />
+          </>
         )}
-        <DownloadButton />
-        <UploadButton />
-        <IssuesButton />
 
         {/* Overlays */}
         {!isMobile && showAreaList && (
