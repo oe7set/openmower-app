@@ -431,8 +431,11 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
           </>
         )}
 
-        {/* Overlays */}
-        {!isMobile && showAreaList && (
+        {/* Overlays. The area list (both the desktop side panel and the mobile
+            dialog) is editor chrome, so it is suppressed in embedded mode — its
+            toggle button lives in the !embedded controls block, and the Pilot
+            page that embeds the map provides its own controls. */}
+        {!embedded && !isMobile && showAreaList && (
           <Box
             sx={{
               position: 'absolute',
@@ -445,7 +448,7 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
             <AreasList areas={areas} onClose={() => setShowAreaList(false)} />
           </Box>
         )}
-        {isMobile && (
+        {!embedded && isMobile && (
           <MapDialog
             open={showAreaList}
             onClose={() => setShowAreaList(false)}

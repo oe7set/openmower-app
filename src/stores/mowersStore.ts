@@ -61,6 +61,21 @@ export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconne
 // subscribe storm.
 const sensorHistorySeeded = new Set<string>();
 
+// Throttle decode-failure warnings for the high-frequency streams. Even though
+// the schemas now tolerate NaN/garbage per field, a genuinely malformed payload
+// could still throw several times a second; logging the full error every time
+// floods the console and (in dev) the Next.js server pipe, adding real
+// main-thread load. Log at most once per key in this window.
+const DECODE_WARN_THROTTLE_MS = 2_000;
+const lastDecodeWarn = new Map<string, number>();
+function warnThrottled(key: string, ...args: unknown[]): void {
+  const now = Date.now();
+  const last = lastDecodeWarn.get(key) ?? 0;
+  if (now - last < DECODE_WARN_THROTTLE_MS) return;
+  lastDecodeWarn.set(key, now);
+  console.warn(...args);
+}
+
 // Topics the dashboard depends on for "is the mower alive?". Tracked
 // separately from arbitrary topic subscriptions so the connection banner
 // surfaces only the things the user actually waits for.
@@ -416,7 +431,15 @@ export const useMowersStore = create<MowersStore>()(
                 console.warn('[mowersStore] map/json parse failed:', e);
               }
             } else if (partialTopic === 'rpc/response') {
-              mowers[idx].rpc._handleResponse(payload.toString());
+              // Guard the only non-JSON-parsing branch: _handleResponse does an
+              // unprotected JSON.parse, and an uncaught throw here would escape
+              // the shared client.on('message') callback and kill the whole
+              // dispatch for that tick. A malformed response must not do that.
+              try {
+                mowers[idx].rpc._handleResponse(payload.toString());
+              } catch (e) {
+                console.warn('[mowersStore] rpc/response handling failed:', e);
+              }
             } else if (partialTopic === 'capabilities/json') {
               try {
                 const parsed = capabilitiesSchema.parse(JSON.parse(payload.toString()));
@@ -459,9 +482,9 @@ export const useMowersStore = create<MowersStore>()(
                 // failure (RPC timeout, older xbot_monitoring without the
                 // method) we clear the flag so the next `sensor_infos/json`
                 // republish triggers a fresh attempt — important because
-                // history_bulk on a fully-loaded mower can take >5 s and
-                // sometimes hits the 10 s rpc-base timeout. The Dialog has
-                // its own per-sensor fallback for the worst case.
+                // history_bulk on a fully-loaded mower can take several
+                // seconds and may hit the rpc-base timeout (30 s default). The
+                // Dialog has its own per-sensor fallback for the worst case.
                 const mowerForReplay = mowers[idx];
                 if (mowerForReplay && !sensorHistorySeeded.has(mowerForReplay.id)) {
                   const replayId = mowerForReplay.id;
@@ -555,7 +578,7 @@ export const useMowersStore = create<MowersStore>()(
                 const sample = imuSampleSchema.parse(inner);
                 pushImuSample(mowers[idx].id, sample);
               } catch (e) {
-                console.warn('[mowersStore] imu/stream decode failed:', e);
+                warnThrottled('imu/stream', '[mowersStore] imu/stream decode failed:', e);
               }
             } else if (partialTopic === 'gnss/stream') {
               // BSON {d: {ft, rtk, used, vis, dop, ..., sats:[...]}} from
@@ -568,7 +591,7 @@ export const useMowersStore = create<MowersStore>()(
                 const sample = gnssSampleSchema.parse(inner);
                 pushGnssSample(mowers[idx].id, sample);
               } catch (e) {
-                console.warn('[mowersStore] gnss/stream decode failed:', e);
+                warnThrottled('gnss/stream', '[mowersStore] gnss/stream decode failed:', e);
               }
             } else if (partialTopic === 'bms/json') {
               // Merged BMS + charger snapshot from xbot_monitoring (plain JSON,

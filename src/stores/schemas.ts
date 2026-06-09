@@ -20,6 +20,18 @@ export type Capabilities = z.infer<typeof capabilitiesSchema>;
 // worse than displaying a slightly off flag.
 const looseBoolean = z.union([z.boolean(), z.number().transform((v) => v !== 0)]);
 
+// A telemetry number that tolerates non-finite/garbage from firmware: NaN,
+// ±Infinity, a missing field, or an out-of-range value fall back to `fallback`
+// instead of throwing. The GNSS/IMU streams arrive several times a second, so a
+// single bad field (e.g. hacc/vacc reported as NaN before a fix) must never
+// drop the whole sample — z.number() rejects NaN and .default only fills
+// `undefined`, so .catch() is the right tool here. Mirrors looseBoolean above.
+const looseNumber = (fallback = 0) => z.number().catch(fallback);
+// Optional variant: a bad/non-finite value collapses to undefined (shown as
+// "—") rather than throwing.
+const looseNumberOpt = () => z.number().optional().catch(undefined);
+const looseIntOpt = () => z.number().int().optional().catch(undefined);
+
 export const actionSchema = z.object({
   action_id: z.string(),
   action_name: z.string(),
@@ -342,16 +354,20 @@ export const eventSeverityRank: Record<EventSeverity, number> = {
 // the body-to-world rotation in REP-103 conventions (x=fwd, y=left, z=up),
 // ts_ms is the message header stamp truncated to wall-clock milliseconds.
 export const imuSampleSchema = z.object({
-  ax: z.number(),
-  ay: z.number(),
-  az: z.number(),
-  gx: z.number(),
-  gy: z.number(),
-  gz: z.number(),
-  qw: z.number(),
-  qx: z.number(),
-  qy: z.number(),
-  qz: z.number(),
+  // Loose numbers: a single NaN/Inf glitch from the IMU must not drop the whole
+  // ~30 Hz sample (which would freeze the 3D view). A zero-ed axis for one frame
+  // is far less disruptive than a missing sample.
+  ax: looseNumber(0),
+  ay: looseNumber(0),
+  az: looseNumber(0),
+  gx: looseNumber(0),
+  gy: looseNumber(0),
+  gz: looseNumber(0),
+  qw: looseNumber(0),
+  qx: looseNumber(0),
+  qy: looseNumber(0),
+  qz: looseNumber(0),
+  // Strict: an unstamped sample can't be ordered, so dropping it is correct.
   ts_ms: z.number(),
 });
 export type ImuSample = z.infer<typeof imuSampleSchema>;
@@ -369,50 +385,54 @@ export type ImuSample = z.infer<typeof imuSampleSchema>;
 // (0 GPS, 1 SBAS, 2 Galileo, 3 BeiDou, 5 QZSS, 6 GLONASS, 255 unknown);
 // band is normalized (1 = L1/E1/B1, 2 = L2/B2I, 5 = L5/E5/B2a, 0 = unknown).
 export const satelliteSchema = z.object({
-  g: z.number().int(), // gnss_id
-  s: z.number().int(), // sv_id
-  c: z.number(), // C/N0 in dB-Hz
-  b: z.number().int().default(0), // band
-  e: z.number().default(-128), // elevation deg (-128 unknown)
-  a: z.number().default(-1), // azimuth deg (-1 unknown)
+  g: z.number().int().catch(255), // gnss_id (255 unknown)
+  s: z.number().int().catch(0), // sv_id
+  c: looseNumber(0), // C/N0 in dB-Hz
+  b: z.number().int().catch(0), // band
+  e: looseNumber(-128), // elevation deg (-128 unknown)
+  a: looseNumber(-1), // azimuth deg (-1 unknown)
   u: looseBoolean.default(false), // used in fix
   hl: looseBoolean.default(true), // healthy
 });
 export type GnssSatellite = z.infer<typeof satelliteSchema>;
 
 const dopSchema = z.object({
-  g: z.number().default(0),
-  p: z.number().default(0),
-  h: z.number().default(0),
-  v: z.number().default(0),
-  t: z.number().default(0),
+  g: looseNumber(0),
+  p: looseNumber(0),
+  h: looseNumber(0),
+  v: looseNumber(0),
+  t: looseNumber(0),
 });
 
 export const gnssSampleSchema = z.object({
-  ft: z.number().int().min(0).max(5).default(0), // fix_type
-  rtk: z.number().int().default(0), // 0 none, 1 float, 2 fixed
-  used: z.number().default(0), // sats used in fix
-  vis: z.number().default(0), // sats visible
+  // Every numeric field is loose: the firmware legitimately emits NaN (e.g.
+  // hacc/vacc before a fix), and one NaN must not drop the whole ~4 Hz sample.
+  ft: z.number().int().min(0).max(5).catch(0), // fix_type
+  rtk: z.number().int().catch(0), // 0 none, 1 float, 2 fixed
+  used: looseNumber(0), // sats used in fix
+  vis: looseNumber(0), // sats visible
   dop: dopSchema.default({g: 0, p: 0, h: 0, v: 0, t: 0}),
-  hacc: z.number().default(0), // horizontal accuracy (m)
-  vacc: z.number().default(0), // vertical accuracy (m)
-  lat: z.number().default(0),
-  lon: z.number().default(0),
-  h: z.number().default(0), // height (m)
-  ve: z.number().default(0), // velocity ENU (m/s)
-  vn: z.number().default(0),
-  vu: z.number().default(0),
-  vh: z.number().default(0), // vehicle heading (rad)
-  mh: z.number().default(0), // motion heading (rad)
-  age: z.number().default(0), // RTCM correction age (s); 0 when not reported
+  hacc: looseNumber(0), // horizontal accuracy (m)
+  vacc: looseNumber(0), // vertical accuracy (m)
+  lat: looseNumber(0),
+  lon: looseNumber(0),
+  h: looseNumber(0), // height (m)
+  ve: looseNumber(0), // velocity ENU (m/s)
+  vn: looseNumber(0),
+  vu: looseNumber(0),
+  vh: looseNumber(0), // vehicle heading (rad)
+  mh: looseNumber(0), // motion heading (rad)
+  age: looseNumber(0), // RTCM correction age (s); 0 when not reported
   // UM982 / Unicore detail. Optional so the page keeps parsing on firmware
   // that doesn't send them yet (they read as undefined → shown as "—").
-  base: z.number().optional(), // dual-antenna baseline length (m)
-  sol: z.number().int().optional(), // solution status: 0 none,1 single,2 DGPS,3 float,4 fixed
-  hacc_hdg: z.number().optional(), // heading accuracy / stddev (deg)
-  cutoff: z.number().optional(), // enforced elevation cutoff mask (deg); -1 = not reported
-  agc: z.array(z.number()).optional(), // per-antenna AGC: ANT1 [0..4], ANT2 [5..9]; -1 = unused band
-  jam: z.array(z.number()).optional(), // jamming: [cw_ratio 0..255, cw_flag 0/1/2]
+  base: looseNumberOpt(), // dual-antenna baseline length (m)
+  sol: looseIntOpt(), // solution status: 0 none,1 single,2 DGPS,3 float,4 fixed
+  hacc_hdg: looseNumberOpt(), // heading accuracy / stddev (deg)
+  cutoff: looseNumberOpt(), // enforced elevation cutoff mask (deg); -1 = not reported
+  agc: z.array(looseNumber(0)).optional(), // per-antenna AGC: ANT1 [0..4], ANT2 [5..9]; -1 = unused band
+  jam: z.array(looseNumber(0)).optional(), // jamming: [cw_ratio 0..255, cw_flag 0/1/2]
+  // Strict: a sample without a valid timestamp can't be ordered in the ring, so
+  // dropping it is the correct behaviour.
   ts_ms: z.number(),
   sats: z.array(satelliteSchema).default([]),
 });
