@@ -5,7 +5,11 @@ import {MowerMap} from '@/components/map/MowerMap';
 import {MAP_OVERLAY_PANEL, MAP_OVERLAY_TELEOP} from '@/components/map/zIndex';
 import VirtualJoystick from '@/components/map/teleop/VirtualJoystick';
 import {useMapboxDraw, useMapContext, withDisplaySortKeys} from '@/contexts/MapContext';
+import {useGamepad} from '@/hooks/useGamepad';
 import {useTeleop} from '@/hooks/useTeleop';
+import {useToast} from '@/hooks/useToast';
+import {useWakeLock} from '@/hooks/useWakeLock';
+import {vibrate} from '@/lib/haptics';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
 import {useUiStore} from '@/stores/uiStore';
@@ -13,11 +17,18 @@ import {featuresToMap, mapToFeatures} from '@/utils/area-converter';
 import {useEffectiveDatum} from '@/utils/datum';
 import {
   ContentCut as MowIcon,
+  Insights as InsightsIcon,
   Layers as LayersIcon,
   LayersClear as LayersClearIcon,
+  Lightbulb as LightbulbIcon,
+  LightbulbOutlined as LightbulbOutlinedIcon,
   Opacity as OpacityIcon,
+  PhotoCamera as PhotoCameraIcon,
+  SportsEsports as GamepadIcon,
   Stop as StopIcon,
+  SwapVert as SwapVertIcon,
   Tune as TuneIcon,
+  VerticalSplit as VerticalSplitIcon,
   Videocam as VideocamIcon,
   VideocamOff as VideocamOffIcon,
 } from '@mui/icons-material';
@@ -38,8 +49,12 @@ import FloatingSensorBar from './FloatingSensorBar';
 type MapMode = 'hidden' | 'solid' | 'overlay';
 const MAP_MODE_ORDER: MapMode[] = ['hidden', 'overlay', 'solid'];
 
+// Speed-cap quick presets (fraction of max velocity) shown beside the slider.
+const SPEED_PRESETS = [0.3, 0.6, 1] as const;
+
 export default function PilotPage() {
   const theme = useTheme();
+  const toast = useToast();
   const cap = useUiStore((s) => s.teleopSpeedCap);
   const setCap = useUiStore((s) => s.setTeleopSpeedCap);
   const {setVelocity} = useTeleop({cap});
@@ -56,6 +71,7 @@ export default function PilotPage() {
   const [mapMode, setMapMode] = useState<MapMode>('hidden');
   const [mapOpacity, setMapOpacity] = useState(0.45);
   const [showOpacity, setShowOpacity] = useState(false);
+  const [showHud, setShowHud] = useState(false);
   const [cam, setCam] = useState<CameraStatus | null>(null);
   const [manualMowing, setManualMowing] = useState(false);
   // Sensor-bar config popover anchor and the bar's measured docked height, used
@@ -65,6 +81,22 @@ export default function PilotPage() {
   const sensorPosition = useUiStore((s) => s.pilotSensorPosition);
   const dockTop = sensorPosition === 'top' ? sensorBarHeight + 8 : 0;
   const dockBottom = sensorPosition === 'bottom' ? sensorBarHeight + 8 : 0;
+
+  // Persisted Pilot view prefs: overlay vs split layout, split half order, and
+  // whether to hold a screen wake lock while driving.
+  const pilotLayout = useUiStore((s) => s.pilotLayout);
+  const setPilotLayout = useUiStore((s) => s.setPilotLayout);
+  const splitSwapped = useUiStore((s) => s.pilotSplitSwapped);
+  const setSplitSwapped = useUiStore((s) => s.setPilotSplitSwapped);
+  const keepAwake = useUiStore((s) => s.pilotKeepAwake);
+  const setKeepAwake = useUiStore((s) => s.setPilotKeepAwake);
+  const isSplit = pilotLayout === 'split' && Boolean(mapData);
+
+  // Keep the display awake while driving (opt-out via the cluster toggle), and
+  // let a physical gamepad's left stick drive teleop alongside the touch
+  // joystick — both feed the same setVelocity, so the cap still applies.
+  useWakeLock(keepAwake);
+  const gamepadConnected = useGamepad(setVelocity);
 
   const inAreaRecording = currentState === 'AREA_RECORDING';
   // Mirror /drive: the manual mow-motor actions are only handled by the
@@ -100,6 +132,8 @@ export default function PilotPage() {
   const triggerEmergency = useCallback(() => {
     const {mowers, selected} = useMowersStore.getState();
     mowers[selected]?.publishAction(MOWER_ACTIONS.setEmergency);
+    // A longer triple buzz marks the emergency as a deliberately heavy action.
+    vibrate([60, 40, 60]);
   }, []);
 
   const publishAction = useCallback((actionId: string): boolean => {
@@ -118,7 +152,32 @@ export default function PilotPage() {
       publishAction(MOWER_ACTIONS.arManualMowOn);
       setManualMowing(true);
     }
+    vibrate(25);
   }, [manualMowing, publishAction]);
+
+  // Speed-cap preset + slider helpers, with a light tap on each change.
+  const applyCap = useCallback(
+    (v: number) => {
+      setCap(v);
+      vibrate(10);
+    },
+    [setCap],
+  );
+
+  // Snapshot the current camera frame and trigger a download. The data URL is
+  // produced by CameraStream (canvas), so we just hand it to a synthetic link.
+  const takeSnapshot = useCallback(() => {
+    const dataUrl = cam?.snapshot();
+    if (!dataUrl) {
+      toast.warning('Snapshot unavailable (no frame yet, or CORS-restricted MJPEG)');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `pilot-snapshot-${cam?.stats?.width ?? 0}x${cam?.stats?.height ?? 0}.png`;
+    a.click();
+    vibrate(15);
+  }, [cam, toast]);
 
   // Keep the local toggle in sync with the backend, mirroring /drive: the
   // AreaRecordingBehavior clears manual_mowing on exit and setEmergencyMode
@@ -148,13 +207,40 @@ export default function PilotPage() {
     };
   }, [publishAction]);
 
+  // A connected-but-no-media stall is its own warning (it shows immediately,
+  // independent of the reconnect failure counter), since reconnecting won't
+  // fix it — the cause is host-side routing, not a dropped connection.
+  const camStalled = cam?.source !== 'none' && cam?.state === 'stalled';
   const camWarning = useMemo(
-    () => cam && cam.source !== 'none' && cam.state !== 'live' && cam.failures >= CAMERA_RECONNECT_WARN_AFTER,
+    () =>
+      cam &&
+      cam.source !== 'none' &&
+      cam.state !== 'live' &&
+      (cam.state === 'stalled' || cam.failures >= CAMERA_RECONNECT_WARN_AFTER),
     [cam],
   );
+  const hasCamera = cam != null && cam.source !== 'none';
+  const camLive = cam?.state === 'live';
 
-  const mapVisible = mapMode !== 'hidden';
-  const mapOpacityValue = mapMode === 'overlay' ? mapOpacity : 1;
+  // In split layout the map is always shown solid; only overlay uses the
+  // hidden/overlay/solid cycle. Derive both halves' visibility from that.
+  const mapVisible = isSplit || mapMode !== 'hidden';
+  const mapOpacityValue = !isSplit && mapMode === 'overlay' ? mapOpacity : 1;
+
+  // Geometry for the camera and map boxes. In overlay layout both fill the
+  // whole box (inset:0); in split layout each takes a half, ordered by the
+  // swap flag (default: camera on top, map below).
+  const fullInset = {top: 0, bottom: 0, left: 0, right: 0};
+  const cameraBox = isSplit
+    ? splitSwapped
+      ? {top: '50%', bottom: 0, left: 0, right: 0}
+      : {top: 0, height: '50%', left: 0, right: 0}
+    : fullInset;
+  const mapBox = isSplit
+    ? splitSwapped
+      ? {top: 0, height: '50%', left: 0, right: 0}
+      : {top: '50%', bottom: 0, left: 0, right: 0}
+    : fullInset;
 
   return (
     // Fill the AppShell <main> content area rather than the whole viewport, so
@@ -178,9 +264,11 @@ export default function PilotPage() {
         touchAction: 'none',
       }}
     >
-      {/* Layer 0 — camera backdrop (or placeholder when none configured) */}
-      <Box sx={{position: 'absolute', inset: 0}}>
-        <CameraStream objectFit="cover" onStatus={setCam} />
+      {/* Layer 0 — camera backdrop (or placeholder when none configured). In
+          split layout it occupies one half; objectFit follows the layout so
+          the picture is never cropped in split but stays full-bleed in overlay. */}
+      <Box sx={{position: 'absolute', ...cameraBox, overflow: 'hidden'}}>
+        <CameraStream objectFit={isSplit ? 'contain' : 'cover'} onStatus={setCam} />
         {(!cam || cam.source === 'none') && (
           <Box
             sx={{
@@ -206,29 +294,44 @@ export default function PilotPage() {
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: MAP_OVERLAY_PANEL,
+              maxWidth: 'calc(100% - 16px)',
             }}
           >
-            <Chip color="error" size="small" label="Camera reconnecting…" sx={{fontWeight: 600}} />
+            <Tooltip
+              title={
+                camStalled
+                  ? 'WebRTC connected but no video frames are arriving. This is almost always a host-side routing issue (bytesReceived stays 0 despite ICE succeeding). On a Pi with multiple network interfaces, check `ip route get <browser-ip>` — see the lowlatency-cam-streamer README.'
+                  : 'The camera endpoint is unreachable; retrying every couple of seconds.'
+              }
+            >
+              <Chip
+                color={camStalled ? 'warning' : 'error'}
+                size="small"
+                label={camStalled ? 'Connected — no video signal' : 'Camera reconnecting…'}
+                sx={{fontWeight: 600}}
+              />
+            </Tooltip>
           </Box>
         )}
       </Box>
 
-      {/* Layer 1 — map overlay. Kept MOUNTED whenever mapData exists and only
+      {/* Layer 1 — map. Kept MOUNTED whenever mapData exists and only
           shown/hidden via opacity + pointer-events. Conditionally unmounting it
           breaks maplibre on re-mount (tiles never reload), so instead we leave
-          the full-size container in the tree — maplibre keeps valid dimensions
-          and its tiles stay warm. In overlay mode it is translucent but still
-          interactive (pan/zoom); the joystick layer above captures its own
-          pointers, so it is never blocked. When hidden, pointer-events are off
-          so the camera/controls underneath stay reachable. */}
+          the container in the tree — maplibre keeps valid dimensions and its
+          tiles stay warm. In overlay layout it spans the whole box (translucent
+          in overlay mode, still interactive — the joystick layer above captures
+          its own pointers); in split layout it takes one half, solid. The box
+          geometry transitions so toggling layout/swap animates; MowerMap's
+          ResizeObserver calls map.resize() as the box changes size. */}
       {mapData && (
         <Box
           sx={{
             position: 'absolute',
-            inset: 0,
+            ...mapBox,
             opacity: mapVisible ? mapOpacityValue : 0,
             pointerEvents: mapVisible ? 'auto' : 'none',
-            transition: 'opacity 0.2s',
+            transition: 'opacity 0.2s, top 0.2s, height 0.2s, bottom 0.2s',
           }}
         >
           <MowerMap
@@ -238,7 +341,7 @@ export default function PilotPage() {
             sx={{
               width: '100%',
               height: '100%',
-              backgroundColor: mapMode === 'overlay' ? 'transparent' : 'black',
+              backgroundColor: !isSplit && mapMode === 'overlay' ? 'transparent' : 'black',
             }}
           />
         </Box>
@@ -265,18 +368,36 @@ export default function PilotPage() {
           alignItems: 'flex-end',
         }}
       >
+        {/* Layout toggle: overlay (translucent map over camera) ↔ split
+            (camera/map halves). Disabled with no map to lay out. */}
         <OverlayIconButton
-          title={
-            mapMode === 'hidden' ? 'Show map (overlay)' : mapMode === 'overlay' ? 'Show map (solid)' : 'Hide map'
-          }
-          onClick={cycleMapMode}
+          title={isSplit ? 'Overlay layout' : 'Split layout (camera / map)'}
+          active={isSplit}
+          disabled={!mapData}
+          onClick={() => setPilotLayout(isSplit ? 'overlay' : 'split')}
         >
-          {mapMode === 'hidden' ? <LayersIcon /> : mapMode === 'overlay' ? <LayersIcon /> : <LayersClearIcon />}
+          <VerticalSplitIcon />
         </OverlayIconButton>
+        {/* In split layout: swap which half is on top. Otherwise: the original
+            hidden → overlay → solid map-visibility cycle. */}
+        {isSplit ? (
+          <OverlayIconButton title="Swap halves (camera ↔ map)" onClick={() => setSplitSwapped(!splitSwapped)}>
+            <SwapVertIcon />
+          </OverlayIconButton>
+        ) : (
+          <OverlayIconButton
+            title={
+              mapMode === 'hidden' ? 'Show map (overlay)' : mapMode === 'overlay' ? 'Show map (solid)' : 'Hide map'
+            }
+            onClick={cycleMapMode}
+          >
+            {mapMode === 'solid' ? <LayersClearIcon /> : <LayersIcon />}
+          </OverlayIconButton>
+        )}
         <OverlayIconButton title="Sensor bar settings" onClick={(e) => setSensorCfgAnchor(e.currentTarget)}>
           <TuneIcon />
         </OverlayIconButton>
-        {mapMode === 'overlay' && (
+        {!isSplit && mapMode === 'overlay' && (
           <OverlayIconButton
             title="Adjust map transparency"
             active={showOpacity}
@@ -285,10 +406,49 @@ export default function PilotPage() {
             <OpacityIcon />
           </OverlayIconButton>
         )}
+        {hasCamera && (
+          <OverlayIconButton title="Camera stats overlay" active={showHud} onClick={() => setShowHud((v) => !v)}>
+            <InsightsIcon />
+          </OverlayIconButton>
+        )}
+        {hasCamera && (
+          <OverlayIconButton title="Snapshot (download frame)" onClick={takeSnapshot} disabled={!camLive}>
+            <PhotoCameraIcon />
+          </OverlayIconButton>
+        )}
+        <OverlayIconButton
+          title={keepAwake ? 'Keep display awake: on' : 'Keep display awake: off'}
+          active={keepAwake}
+          onClick={() => setKeepAwake(!keepAwake)}
+        >
+          {keepAwake ? <LightbulbIcon /> : <LightbulbOutlinedIcon />}
+        </OverlayIconButton>
         <OverlayIconButton title="Emergency stop" color="error" onClick={triggerEmergency} disabled={!hasMower}>
           <StopIcon />
         </OverlayIconButton>
-        <Tooltip title={cam?.state === 'live' ? 'Camera live' : 'Camera offline'} placement="left">
+        {gamepadConnected && (
+          <Tooltip title="Gamepad connected — left stick drives" placement="left">
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                color: theme.palette.success.main,
+                bgcolor: 'rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+              }}
+            >
+              <GamepadIcon />
+            </Box>
+          </Tooltip>
+        )}
+        <Tooltip
+          title={camLive ? 'Camera live' : camStalled ? 'Connected — no video signal' : 'Camera offline'}
+          placement="left"
+        >
           <Box
             sx={{
               display: 'flex',
@@ -297,18 +457,57 @@ export default function PilotPage() {
               width: 40,
               height: 40,
               borderRadius: '50%',
-              color: cam?.state === 'live' ? theme.palette.success.main : 'rgba(255,255,255,0.5)',
+              color: camLive
+                ? theme.palette.success.main
+                : camStalled
+                  ? theme.palette.warning.main
+                  : 'rgba(255,255,255,0.5)',
               bgcolor: 'rgba(0,0,0,0.4)',
               backdropFilter: 'blur(4px)',
             }}
           >
-            {cam?.state === 'live' ? <VideocamIcon /> : <VideocamOffIcon />}
+            {camLive ? <VideocamIcon /> : <VideocamOffIcon />}
           </Box>
         </Tooltip>
       </Box>
 
+      {/* Camera stats HUD — opt-in, mirrors the /drive footer metrics. Useful
+          both as eye-candy and to diagnose a stall (fps/bitrate drop to 0). */}
+      {hasCamera && showHud && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: `calc(8px + ${dockTop}px)`,
+            left: 'calc(12px + env(safe-area-inset-left))',
+            zIndex: MAP_OVERLAY_PANEL,
+            px: 1.5,
+            py: 1,
+            borderRadius: 2,
+            bgcolor: 'rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(6px)',
+            color: 'rgba(255,255,255,0.9)',
+            fontVariantNumeric: 'tabular-nums',
+            maxWidth: 'calc(100% - 80px)',
+          }}
+        >
+          <Typography variant="caption" sx={{display: 'block', fontWeight: 600}}>
+            {cam?.source === 'whep' ? 'WebRTC' : 'MJPEG'} · {camLive ? 'live' : camStalled ? 'stalled' : cam?.state}
+          </Typography>
+          {cam?.stats && cam.stats.width > 0 ? (
+            <Typography variant="caption" sx={{display: 'block', opacity: 0.85}}>
+              {cam.stats.width}×{cam.stats.height} · {cam.stats.fps.toFixed(0)} fps ·{' '}
+              {cam.stats.bitrateKbps.toFixed(0)} kbps · RTT {cam.stats.rttMs.toFixed(0)} ms
+            </Typography>
+          ) : (
+            <Typography variant="caption" sx={{display: 'block', opacity: 0.6}}>
+              {cam?.source === 'whep' ? 'waiting for video stats…' : 'no stats for MJPEG'}
+            </Typography>
+          )}
+        </Box>
+      )}
+
       {/* Opacity slider — only when adjusting the overlay */}
-      {mapMode === 'overlay' && showOpacity && (
+      {!isSplit && mapMode === 'overlay' && showOpacity && (
         <Box
           sx={{
             position: 'absolute',
@@ -337,14 +536,15 @@ export default function PilotPage() {
         </Box>
       )}
 
-      {/* Speed-cap slider (bottom-left) */}
+      {/* Speed-cap slider + presets (bottom-left). Sits low in the corner so it
+          stays clear of the centred joystick. */}
       <Box
         sx={{
           position: 'absolute',
           left: 'calc(12px + env(safe-area-inset-left))',
-          bottom: `calc(16px + ${dockBottom}px)`,
+          bottom: `calc(8px + ${dockBottom}px)`,
           zIndex: MAP_OVERLAY_TELEOP,
-          width: 120,
+          width: 130,
           px: 2,
           py: 1,
           borderRadius: 2,
@@ -361,8 +561,34 @@ export default function PilotPage() {
           max={100}
           step={5}
           value={Math.round(cap * 100)}
-          onChange={(_, v) => setCap((v as number) / 100)}
+          onChange={(_, v) => applyCap((v as number) / 100)}
         />
+        <Box sx={{display: 'flex', gap: 0.5, mt: 0.25}}>
+          {SPEED_PRESETS.map((preset) => {
+            const active = Math.round(cap * 100) === Math.round(preset * 100);
+            return (
+              <Box
+                key={preset}
+                component="button"
+                onClick={() => applyCap(preset)}
+                sx={{
+                  flex: 1,
+                  border: 'none',
+                  cursor: 'pointer',
+                  borderRadius: 1,
+                  py: 0.25,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: active ? '#000' : 'rgba(255,255,255,0.85)',
+                  bgcolor: active ? theme.palette.primary.main : 'rgba(255,255,255,0.12)',
+                  '&:hover': {bgcolor: active ? theme.palette.primary.main : 'rgba(255,255,255,0.22)'},
+                }}
+              >
+                {Math.round(preset * 100)}%
+              </Box>
+            );
+          })}
+        </Box>
       </Box>
 
       {/* Mow-motor toggle (bottom-right, mirroring the speed slider bottom-left

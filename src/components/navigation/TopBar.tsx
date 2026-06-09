@@ -12,6 +12,8 @@ import {
   Bolt as BoltIcon,
   Brightness4,
   DarkMode,
+  Fullscreen as FullscreenIcon,
+  FullscreenExit as FullscreenExitIcon,
   LightMode,
   Menu as MenuIcon,
   NotificationsActive,
@@ -73,6 +75,23 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  // Whole-page fullscreen via the browser Fullscreen API. Tracking the event
+  // (rather than our own toggle) keeps the icon correct when the user leaves
+  // fullscreen with Esc or the browser chrome.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen?.();
+    }
+  };
 
   // Auto-hide: track scroll direction on the main content container so the
   // bar slides out on scroll-down and back on scroll-up. We use a simple
@@ -285,6 +304,15 @@ export default function TopBar({onMenuOpen}: TopBarProps) {
           <Badge badgeContent={unreadEvents} color="error" max={99}>
             {unreadEvents > 0 ? <NotificationsActive /> : <NotificationsNone />}
           </Badge>
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+        <IconButton
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          onClick={toggleFullscreen}
+        >
+          {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
         </IconButton>
       </Tooltip>
 

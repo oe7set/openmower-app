@@ -17,8 +17,16 @@ const RECONNECT_DELAY_MS = 2_000;
 // After this many consecutive failures the host may want to warn the user; we
 // never stop retrying — the camera/streamer can return at any time.
 export const CAMERA_RECONNECT_WARN_AFTER = 3;
+// Stats poll cadence and how many consecutive flat polls (no new bytes/frames)
+// flip a connected stream into 'stalled'. WebRTC reaching 'connected' while no
+// media flows is almost always a host-side routing issue (bytesReceived stays
+// 0 despite ICE succeeding — see lowlatency-cam-streamer README); reconnecting
+// won't fix it, so we surface it as a distinct state rather than a failure.
+const STATS_POLL_MS = 1_000;
+const STALL_TICKS = 3;
 
-export type CameraConnState = 'connecting' | 'live' | 'error';
+// 'stalled' = the transport is connected but no decoded frames are arriving.
+export type CameraConnState = 'connecting' | 'live' | 'stalled' | 'error';
 
 export interface CameraStatus {
   source: 'whep' | 'mjpeg' | 'none';
@@ -28,6 +36,9 @@ export interface CameraStatus {
   url: string;
   /** Force an immediate reconnect, resetting the failure counter. */
   reload: () => void;
+  /** Grab the current frame as a PNG data URL, or null if unavailable (no
+      frame yet, or a CORS-tainted MJPEG canvas). */
+  snapshot: () => string | null;
 }
 
 interface CameraStreamProps {
@@ -46,7 +57,15 @@ export default function CameraStream({objectFit = 'cover', onStatus}: CameraStre
   const noCamera = !whepUrl && !cameraUrl;
   useEffect(() => {
     if (noCamera && onStatus) {
-      onStatus({source: 'none', state: 'error', failures: 0, stats: null, url: '', reload: () => {}});
+      onStatus({
+        source: 'none',
+        state: 'error',
+        failures: 0,
+        stats: null,
+        url: '',
+        reload: () => {},
+        snapshot: () => null,
+      });
     }
   }, [noCamera, onStatus]);
 
@@ -97,6 +116,24 @@ function WhepStream({
     setToken((n) => n + 1);
   }, []);
 
+  // Snapshot the current decoded video frame to a PNG data URL. A WebRTC
+  // MediaStream is same-origin by spec, so the canvas is never tainted here.
+  const snapshot = useCallback((): string | null => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Reset transient state synchronously when the connection identity changes,
   // mirroring the pattern in CameraCard to avoid cascading renders.
   const [connectionKey, setConnectionKey] = useState(`${url}:${token}`);
@@ -114,12 +151,25 @@ function WhepStream({
     const client = createWhepClient({url});
     clientRef.current = client;
 
+    // Per-connection stall tracking: once the transport is connected we watch
+    // decoded frames + received bytes; if neither advances for STALL_TICKS
+    // consecutive polls the stream is up but no media flows.
+    let connected = false;
+    let prevFrames = -1;
+    let prevBytes = -1;
+    let flatTicks = 0;
+
     client.onStateChange = (cs) => {
       if (cancelled) return;
       if (cs === 'connected') {
+        connected = true;
+        flatTicks = 0;
+        prevFrames = -1;
+        prevBytes = -1;
         setState('live');
         setFailures(0);
       } else if (cs === 'failed' || cs === 'disconnected' || cs === 'closed') {
+        connected = false;
         setState('error');
         setFailures((n) => n + 1);
         scheduleReload();
@@ -138,9 +188,20 @@ function WhepStream({
 
     statsHandle.current = setInterval(() => {
       client.getStats().then((s) => {
-        if (!cancelled && s) setStats(s);
+        if (cancelled || !s) return;
+        setStats(s);
+        if (!connected) return;
+        const advanced = s.framesDecoded > prevFrames || s.bytesReceived > prevBytes;
+        prevFrames = s.framesDecoded;
+        prevBytes = s.bytesReceived;
+        if (advanced) {
+          flatTicks = 0;
+          setState('live');
+        } else if (++flatTicks >= STALL_TICKS) {
+          setState('stalled');
+        }
       });
-    }, 1000);
+    }, STATS_POLL_MS);
 
     return () => {
       cancelled = true;
@@ -159,8 +220,8 @@ function WhepStream({
   }, [url, token, scheduleReload]);
 
   useEffect(() => {
-    onStatus?.({source: 'whep', state, failures, stats, url, reload});
-  }, [onStatus, state, failures, stats, url, reload]);
+    onStatus?.({source: 'whep', state, failures, stats, url, reload, snapshot});
+  }, [onStatus, state, failures, stats, url, reload, snapshot]);
 
   return (
     <Box sx={{position: 'absolute', inset: 0, bgcolor: '#000'}}>
@@ -189,6 +250,7 @@ function MjpegStream({
   objectFit: 'cover' | 'contain';
   onStatus?: (status: CameraStatus) => void;
 }) {
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const reconnectHandle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [token, setToken] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -209,6 +271,25 @@ function MjpegStream({
     }
     setFailures(0);
     setToken((n) => n + 1);
+  }, []);
+
+  // Snapshot the current MJPEG frame. The <img> requests anonymous CORS so the
+  // canvas stays untainted when the server sends permissive headers; if it
+  // doesn't, toDataURL throws a SecurityError which we swallow to null.
+  const snapshot = useCallback((): string | null => {
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
+    }
   }, []);
 
   useEffect(() => {
@@ -232,8 +313,8 @@ function MjpegStream({
 
   const state: CameraConnState = connected ? 'live' : failures > 0 ? 'error' : 'connecting';
   useEffect(() => {
-    onStatus?.({source: 'mjpeg', state, failures, stats: null, url, reload});
-  }, [onStatus, state, failures, url, reload]);
+    onStatus?.({source: 'mjpeg', state, failures, stats: null, url, reload, snapshot});
+  }, [onStatus, state, failures, url, reload, snapshot]);
 
   const cacheBusted = `${url}${url.includes('?') ? '&' : '?'}_=${token}`;
 
@@ -242,8 +323,12 @@ function MjpegStream({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         key={token}
+        ref={imgRef}
         src={cacheBusted}
         alt="USB camera stream"
+        // Request anonymous CORS so snapshots work when the server allows it;
+        // harmless otherwise (the frame still renders, only toDataURL is gated).
+        crossOrigin="anonymous"
         referrerPolicy="no-referrer"
         decoding="async"
         style={{width: '100%', height: '100%', objectFit, display: 'block'}}

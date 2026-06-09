@@ -65,6 +65,7 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
   const {id, editMode, setEditMode, features, setFeatures, drawWorkflow, setDrawWorkflow, bounds, coveragePreview} =
     useMapContext();
   const mapRef = useRef<Map>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const draw = useMapboxDraw();
   const [hoveredId, setHoveredId] = useMapHover();
   const currentState = useSelectedMower((s) => s?.state.current_state);
@@ -287,8 +288,29 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
     [editMode, areas],
   );
 
+  // maplibre only listens for *window* resizes, not changes to its own
+  // container. Hosts that resize the map box without a window resize (e.g. the
+  // Pilot page toggling its overlay/split layout, or swapping the split halves)
+  // would otherwise leave the canvas at its old size with grey gutters. Observe
+  // the container and call map.resize() on the next frame (rAF-debounced so a
+  // burst of layout changes coalesces into one resize).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => mapRef.current?.resize());
+    });
+    observer.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, []);
+
   return (
-    <Box sx={{...sx, overflow: 'hidden', position: 'relative'}}>
+    <Box ref={containerRef} sx={{...sx, overflow: 'hidden', position: 'relative'}}>
       <RMap
         key={id}
         // key={id + JSON.stringify(drawStyles)}

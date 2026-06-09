@@ -17,6 +17,11 @@ export interface WhepStats {
   packetsLost: number;
   jitterMs: number;
   framesDropped: number;
+  // Cumulative counters, surfaced so a consumer can detect a "connected but no
+  // media flowing" stall (ICE succeeded yet bytesReceived stays flat — almost
+  // always a host-side routing issue; see lowlatency-cam-streamer README).
+  bytesReceived: number;
+  framesDecoded: number;
 }
 
 export interface WhepClient {
@@ -159,6 +164,8 @@ export function createWhepClient({url}: WhepClientOptions): WhepClient {
       packetsLost: inboundVideo.packetsLost ?? 0,
       jitterMs: (inboundVideo.jitter ?? 0) * 1000,
       framesDropped: inboundVideo.framesDropped ?? 0,
+      bytesReceived: bytes,
+      framesDecoded: inboundVideo.framesDecoded ?? 0,
     };
   }
 

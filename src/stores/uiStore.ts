@@ -14,6 +14,10 @@ export type PageHeaderStyle = 'hero' | 'flat' | 'minimal';
 // Pilot-page sensor bar placement: a free-dragging floating pill, or docked to
 // the top/bottom edge of the content area (full width, not draggable).
 export type PilotSensorPosition = 'floating' | 'top' | 'bottom';
+// Pilot-page main layout: 'overlay' lays the map as a translucent layer over
+// the full-bleed camera (the original look); 'split' divides the screen into a
+// camera half and a solid map half (stacked vertically).
+export type PilotLayout = 'overlay' | 'split';
 // Tone-mapping modes exposed in the IMU 3D viewer's look controls. Stored as a
 // string union (not the numeric THREE.*ToneMapping enums) so the persisted
 // value stays stable across three.js upgrades; the viewer maps it to the enum.
@@ -62,6 +66,13 @@ interface UiStore {
   pilotSensorOpacity: number;
   /** Floating (draggable) or docked to the top/bottom edge. */
   pilotSensorPosition: PilotSensorPosition;
+  /** Overlay (translucent map over camera) or split (camera/map stacked). */
+  pilotLayout: PilotLayout;
+  /** In split layout, false = camera on top / map below, true = swapped. */
+  pilotSplitSwapped: boolean;
+  /** Hold a screen Wake Lock while the Pilot page is open so the phone display
+      doesn't sleep mid-drive. */
+  pilotKeepAwake: boolean;
 
   // Heatmap-page overlay toggles. The three layers are independent and may be
   // combined; the grid (binned) heatmap is the default look, points and the
@@ -122,6 +133,9 @@ interface UiStore {
   setPilotSensorMetricIds: (v: string[]) => void;
   setPilotSensorOpacity: (v: number) => void;
   setPilotSensorPosition: (v: PilotSensorPosition) => void;
+  setPilotLayout: (v: PilotLayout) => void;
+  setPilotSplitSwapped: (v: boolean) => void;
+  setPilotKeepAwake: (v: boolean) => void;
 
   setHeatmapShowGrid: (v: boolean) => void;
   setHeatmapShowPoints: (v: boolean) => void;
@@ -206,6 +220,9 @@ export const useUiStore = create<UiStore>()(
       pilotSensorMetricIds: DEFAULT_PILOT_METRIC_IDS,
       pilotSensorOpacity: 0.6,
       pilotSensorPosition: 'floating',
+      pilotLayout: 'overlay',
+      pilotSplitSwapped: false,
+      pilotKeepAwake: true,
       heatmapShowGrid: true,
       heatmapShowPoints: false,
       heatmapShowPath: false,
@@ -225,6 +242,9 @@ export const useUiStore = create<UiStore>()(
       setPilotSensorMetricIds: (pilotSensorMetricIds) => set({pilotSensorMetricIds}),
       setPilotSensorOpacity: (v) => set({pilotSensorOpacity: Math.max(0.2, Math.min(1, v))}),
       setPilotSensorPosition: (pilotSensorPosition) => set({pilotSensorPosition}),
+      setPilotLayout: (pilotLayout) => set({pilotLayout}),
+      setPilotSplitSwapped: (pilotSplitSwapped) => set({pilotSplitSwapped}),
+      setPilotKeepAwake: (pilotKeepAwake) => set({pilotKeepAwake}),
       setHeatmapShowGrid: (heatmapShowGrid) => set({heatmapShowGrid}),
       setHeatmapShowPoints: (heatmapShowPoints) => set({heatmapShowPoints}),
       setHeatmapShowPath: (heatmapShowPath) => set({heatmapShowPath}),
@@ -258,7 +278,7 @@ export const useUiStore = create<UiStore>()(
     }),
     {
       name: 'openmower-ui',
-      version: 5,
+      version: 6,
       // v0 used 'white' as the plain-background style; rename it on load.
       // v1 → v2 introduces the appearance-prefs block; v2 → v3 adds the
       // batch-2 appearance keys (accent, font scale, radius, motion, page
@@ -266,8 +286,10 @@ export const useUiStore = create<UiStore>()(
       // action items to bottomBarItems so existing users keep their Menu
       // trigger after the upgrade. v4 → v5 adds the IMU model orientation
       // offsets (imuModelOffsetX/Y/Z) — no migration logic needed, the missing
-      // keys fall through to the store factory's defaults (all 0). Missing keys
-      // fall through to the store factory's defaults.
+      // keys fall through to the store factory's defaults (all 0). v5 → v6 adds
+      // the Pilot layout prefs (pilotLayout/pilotSplitSwapped/pilotKeepAwake) —
+      // again no migration logic, the missing keys fall through to the factory
+      // defaults. Missing keys fall through to the store factory's defaults.
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version < 1 && state?.mapStyle === 'white') {
