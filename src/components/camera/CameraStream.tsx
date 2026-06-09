@@ -4,6 +4,13 @@ import {createWhepClient, WhepClient, WhepStats} from '@/lib/whep-client';
 import {useSelectedMower} from '@/stores/mowersStore';
 import {Box} from '@mui/material';
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {
+  cameraMediaStyle,
+  cameraWrapperSx,
+  DEFAULT_CAMERA_DISPLAY,
+  drawOrientedSnapshot,
+  type CameraDisplay,
+} from './cameraDisplay';
 
 // Presentational, chrome-less camera stream. Renders just the media element
 // filling its parent (no Card, no header) so it can be used as a full-bleed
@@ -42,15 +49,23 @@ export interface CameraStatus {
 }
 
 interface CameraStreamProps {
-  /** How the video fills its box. 'cover' for full-bleed backgrounds. */
+  /** Shorthand fit for simple hosts (e.g. /drive). Ignored when `display` is
+      given. 'cover' for full-bleed backgrounds. */
   objectFit?: 'cover' | 'contain';
+  /** Full display config (fit/anchor/rotation/mirror/zoom). Takes precedence
+      over `objectFit`. */
+  display?: CameraDisplay;
   /** Notified whenever connection state, failures or stats change. */
   onStatus?: (status: CameraStatus) => void;
 }
 
-export default function CameraStream({objectFit = 'cover', onStatus}: CameraStreamProps) {
+export default function CameraStream({objectFit = 'cover', display, onStatus}: CameraStreamProps) {
   const whepUrl = useSelectedMower((s) => s?.whepUrl ?? '');
   const cameraUrl = useSelectedMower((s) => s?.cameraUrl ?? '');
+
+  // Resolve the effective display config: an explicit `display` wins; otherwise
+  // fall back to the legacy `objectFit` shorthand with default orientation.
+  const d: CameraDisplay = display ?? {...DEFAULT_CAMERA_DISPLAY, fit: objectFit};
 
   // Report the "no camera configured" case once so the host can render a
   // placeholder. Kept in an effect (not render) to avoid setState-in-render.
@@ -71,9 +86,9 @@ export default function CameraStream({objectFit = 'cover', onStatus}: CameraStre
 
   if (noCamera) return null;
   return whepUrl ? (
-    <WhepStream url={whepUrl} objectFit={objectFit} onStatus={onStatus} />
+    <WhepStream url={whepUrl} display={d} onStatus={onStatus} />
   ) : (
-    <MjpegStream url={cameraUrl} objectFit={objectFit} onStatus={onStatus} />
+    <MjpegStream url={cameraUrl} display={d} onStatus={onStatus} />
   );
 }
 
@@ -83,11 +98,11 @@ export default function CameraStream({objectFit = 'cover', onStatus}: CameraStre
 
 function WhepStream({
   url,
-  objectFit,
+  display,
   onStatus,
 }: {
   url: string;
-  objectFit: 'cover' | 'contain';
+  display: CameraDisplay;
   onStatus?: (status: CameraStatus) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -98,6 +113,14 @@ function WhepStream({
   const [state, setState] = useState<CameraConnState>('connecting');
   const [failures, setFailures] = useState(0);
   const [stats, setStats] = useState<WhepStats | null>(null);
+
+  // Track the live display config in a ref so snapshot() can bake in the
+  // current rotation/mirror without changing its callback identity (it's
+  // surfaced via onStatus, so a stable identity keeps that effect from churning).
+  const displayRef = useRef(display);
+  useEffect(() => {
+    displayRef.current = display;
+  }, [display]);
 
   const scheduleReload = useCallback(() => {
     if (reconnectHandle.current !== null) return;
@@ -116,22 +139,13 @@ function WhepStream({
     setToken((n) => n + 1);
   }, []);
 
-  // Snapshot the current decoded video frame to a PNG data URL. A WebRTC
-  // MediaStream is same-origin by spec, so the canvas is never tainted here.
+  // Snapshot the current decoded video frame to a PNG data URL, baking in the
+  // current rotation/mirror. A WebRTC MediaStream is same-origin by spec, so
+  // the canvas is never tainted here.
   const snapshot = useCallback((): string | null => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    try {
-      return canvas.toDataURL('image/png');
-    } catch {
-      return null;
-    }
+    if (!video) return null;
+    return drawOrientedSnapshot(video, video.videoWidth, video.videoHeight, displayRef.current);
   }, []);
 
   // Reset transient state synchronously when the connection identity changes,
@@ -224,15 +238,8 @@ function WhepStream({
   }, [onStatus, state, failures, stats, url, reload, snapshot]);
 
   return (
-    <Box sx={{position: 'absolute', inset: 0, bgcolor: '#000'}}>
-      <video
-        key={token}
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{width: '100%', height: '100%', objectFit, display: 'block'}}
-      />
+    <Box sx={cameraWrapperSx(display)}>
+      <video key={token} ref={videoRef} autoPlay playsInline muted style={cameraMediaStyle(display)} />
     </Box>
   );
 }
@@ -243,11 +250,11 @@ function WhepStream({
 
 function MjpegStream({
   url,
-  objectFit,
+  display,
   onStatus,
 }: {
   url: string;
-  objectFit: 'cover' | 'contain';
+  display: CameraDisplay;
   onStatus?: (status: CameraStatus) => void;
 }) {
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -255,6 +262,13 @@ function MjpegStream({
   const [token, setToken] = useState(0);
   const [connected, setConnected] = useState(false);
   const [failures, setFailures] = useState(0);
+
+  // Track the live display config for orientation-aware snapshots without
+  // churning the snapshot() callback identity (it flows through onStatus).
+  const displayRef = useRef(display);
+  useEffect(() => {
+    displayRef.current = display;
+  }, [display]);
 
   const scheduleReload = useCallback(() => {
     if (reconnectHandle.current !== null) return;
@@ -273,23 +287,13 @@ function MjpegStream({
     setToken((n) => n + 1);
   }, []);
 
-  // Snapshot the current MJPEG frame. The <img> requests anonymous CORS so the
-  // canvas stays untainted when the server sends permissive headers; if it
-  // doesn't, toDataURL throws a SecurityError which we swallow to null.
+  // Snapshot the current MJPEG frame, baking in rotation/mirror. The <img>
+  // requests anonymous CORS so the canvas stays untainted when the server sends
+  // permissive headers; if it doesn't, toDataURL throws and we return null.
   const snapshot = useCallback((): string | null => {
     const img = imgRef.current;
-    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    try {
-      return canvas.toDataURL('image/png');
-    } catch {
-      return null;
-    }
+    if (!img) return null;
+    return drawOrientedSnapshot(img, img.naturalWidth, img.naturalHeight, displayRef.current);
   }, []);
 
   useEffect(() => {
@@ -319,7 +323,7 @@ function MjpegStream({
   const cacheBusted = `${url}${url.includes('?') ? '&' : '?'}_=${token}`;
 
   return (
-    <Box sx={{position: 'absolute', inset: 0, bgcolor: '#000'}}>
+    <Box sx={cameraWrapperSx(display)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         key={token}
@@ -331,7 +335,7 @@ function MjpegStream({
         crossOrigin="anonymous"
         referrerPolicy="no-referrer"
         decoding="async"
-        style={{width: '100%', height: '100%', objectFit, display: 'block'}}
+        style={cameraMediaStyle(display)}
         onLoad={() => {
           setConnected(true);
           setFailures(0);

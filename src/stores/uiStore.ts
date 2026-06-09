@@ -1,6 +1,7 @@
 import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
 import {DEFAULT_PILOT_METRIC_IDS} from '@/app/pilot/sensorMetrics';
+import {clampZoom, DEFAULT_CAMERA_DISPLAY, type CameraDisplay} from '@/components/camera/cameraDisplay';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type Units = 'metric' | 'imperial';
@@ -16,8 +17,13 @@ export type PageHeaderStyle = 'hero' | 'flat' | 'minimal';
 export type PilotSensorPosition = 'floating' | 'top' | 'bottom';
 // Pilot-page main layout: 'overlay' lays the map as a translucent layer over
 // the full-bleed camera (the original look); 'split' divides the screen into a
-// camera half and a solid map half (stacked vertically).
-export type PilotLayout = 'overlay' | 'split';
+// camera half and a solid map half (stacked vertically); 'minimap' keeps the
+// camera full-bleed and shows the map as a small picture-in-picture in a corner.
+export type PilotLayout = 'overlay' | 'split' | 'minimap';
+// Which corner the minimap sits in.
+export type PilotMinimapCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+// Minimap size preset (mapped to pixel widths on the Pilot page).
+export type PilotMinimapSize = 'sm' | 'md' | 'lg';
 // Tone-mapping modes exposed in the IMU 3D viewer's look controls. Stored as a
 // string union (not the numeric THREE.*ToneMapping enums) so the persisted
 // value stays stable across three.js upgrades; the viewer maps it to the enum.
@@ -66,10 +72,17 @@ interface UiStore {
   pilotSensorOpacity: number;
   /** Floating (draggable) or docked to the top/bottom edge. */
   pilotSensorPosition: PilotSensorPosition;
-  /** Overlay (translucent map over camera) or split (camera/map stacked). */
+  /** Overlay (translucent map over camera), split (camera/map stacked) or
+      minimap (small map in a corner over the full-bleed camera). */
   pilotLayout: PilotLayout;
   /** In split layout, false = camera on top / map below, true = swapped. */
   pilotSplitSwapped: boolean;
+  /** Corner the minimap sits in (minimap layout only). */
+  pilotMinimapCorner: PilotMinimapCorner;
+  /** Minimap size preset (minimap layout only). */
+  pilotMinimapSize: PilotMinimapSize;
+  /** How the camera frame is fitted/oriented (fit/anchor/rotation/mirror/zoom). */
+  pilotCameraDisplay: CameraDisplay;
   /** Hold a screen Wake Lock while the Pilot page is open so the phone display
       doesn't sleep mid-drive. */
   pilotKeepAwake: boolean;
@@ -135,6 +148,10 @@ interface UiStore {
   setPilotSensorPosition: (v: PilotSensorPosition) => void;
   setPilotLayout: (v: PilotLayout) => void;
   setPilotSplitSwapped: (v: boolean) => void;
+  setPilotMinimapCorner: (v: PilotMinimapCorner) => void;
+  setPilotMinimapSize: (v: PilotMinimapSize) => void;
+  /** Merge a partial patch into the camera display config (zoom is clamped). */
+  setPilotCameraDisplay: (patch: Partial<CameraDisplay>) => void;
   setPilotKeepAwake: (v: boolean) => void;
 
   setHeatmapShowGrid: (v: boolean) => void;
@@ -222,6 +239,9 @@ export const useUiStore = create<UiStore>()(
       pilotSensorPosition: 'floating',
       pilotLayout: 'overlay',
       pilotSplitSwapped: false,
+      pilotMinimapCorner: 'top-right',
+      pilotMinimapSize: 'md',
+      pilotCameraDisplay: DEFAULT_CAMERA_DISPLAY,
       pilotKeepAwake: true,
       heatmapShowGrid: true,
       heatmapShowPoints: false,
@@ -244,6 +264,14 @@ export const useUiStore = create<UiStore>()(
       setPilotSensorPosition: (pilotSensorPosition) => set({pilotSensorPosition}),
       setPilotLayout: (pilotLayout) => set({pilotLayout}),
       setPilotSplitSwapped: (pilotSplitSwapped) => set({pilotSplitSwapped}),
+      setPilotMinimapCorner: (pilotMinimapCorner) => set({pilotMinimapCorner}),
+      setPilotMinimapSize: (pilotMinimapSize) => set({pilotMinimapSize}),
+      setPilotCameraDisplay: (patch) =>
+        set((s) => {
+          const next = {...s.pilotCameraDisplay, ...patch};
+          if (patch.zoom !== undefined) next.zoom = clampZoom(patch.zoom);
+          return {pilotCameraDisplay: next};
+        }),
       setPilotKeepAwake: (pilotKeepAwake) => set({pilotKeepAwake}),
       setHeatmapShowGrid: (heatmapShowGrid) => set({heatmapShowGrid}),
       setHeatmapShowPoints: (heatmapShowPoints) => set({heatmapShowPoints}),
@@ -278,7 +306,7 @@ export const useUiStore = create<UiStore>()(
     }),
     {
       name: 'openmower-ui',
-      version: 6,
+      version: 7,
       // v0 used 'white' as the plain-background style; rename it on load.
       // v1 → v2 introduces the appearance-prefs block; v2 → v3 adds the
       // batch-2 appearance keys (accent, font scale, radius, motion, page
@@ -289,7 +317,10 @@ export const useUiStore = create<UiStore>()(
       // keys fall through to the store factory's defaults (all 0). v5 → v6 adds
       // the Pilot layout prefs (pilotLayout/pilotSplitSwapped/pilotKeepAwake) —
       // again no migration logic, the missing keys fall through to the factory
-      // defaults. Missing keys fall through to the store factory's defaults.
+      // defaults. v6 → v7 adds the Pilot minimap layout + camera display prefs
+      // (pilotMinimapCorner/Size, pilotCameraDisplay) — same story, missing keys
+      // fall through to the factory defaults. Missing keys fall through to the
+      // store factory's defaults.
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version < 1 && state?.mapStyle === 'white') {

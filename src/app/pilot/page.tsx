@@ -12,11 +12,13 @@ import {useWakeLock} from '@/hooks/useWakeLock';
 import {vibrate} from '@/lib/haptics';
 import {MOWER_ACTIONS} from '@/lib/mowerActions';
 import {useMowersStore, useSelectedMower} from '@/stores/mowersStore';
-import {useUiStore} from '@/stores/uiStore';
+import {useUiStore, type PilotLayout} from '@/stores/uiStore';
 import {featuresToMap, mapToFeatures} from '@/utils/area-converter';
 import {useEffectiveDatum} from '@/utils/datum';
 import {
+  AspectRatio as AspectRatioIcon,
   ContentCut as MowIcon,
+  Fullscreen as ExpandMapIcon,
   Insights as InsightsIcon,
   Layers as LayersIcon,
   LayersClear as LayersClearIcon,
@@ -24,6 +26,7 @@ import {
   LightbulbOutlined as LightbulbOutlinedIcon,
   Opacity as OpacityIcon,
   PhotoCamera as PhotoCameraIcon,
+  PictureInPicture as PictureInPictureIcon,
   SportsEsports as GamepadIcon,
   Stop as StopIcon,
   SwapVert as SwapVertIcon,
@@ -34,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import {Box, Chip, IconButton, Slider, Tooltip, Typography, useTheme} from '@mui/material';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import CameraDisplayConfig from './CameraDisplayConfig';
 import SensorBarConfig from './SensorBarConfig';
 
 // Mobile-first "Pilot" page: a single, non-scrolling screen with the camera as
@@ -82,15 +86,23 @@ export default function PilotPage() {
   const dockTop = sensorPosition === 'top' ? sensorBarHeight + 8 : 0;
   const dockBottom = sensorPosition === 'bottom' ? sensorBarHeight + 8 : 0;
 
-  // Persisted Pilot view prefs: overlay vs split layout, split half order, and
-  // whether to hold a screen wake lock while driving.
+  // Persisted Pilot view prefs: layout (overlay/split/minimap), split half
+  // order, minimap placement/size, camera display config, and whether to hold a
+  // screen wake lock while driving.
   const pilotLayout = useUiStore((s) => s.pilotLayout);
   const setPilotLayout = useUiStore((s) => s.setPilotLayout);
   const splitSwapped = useUiStore((s) => s.pilotSplitSwapped);
   const setSplitSwapped = useUiStore((s) => s.setPilotSplitSwapped);
+  const minimapCorner = useUiStore((s) => s.pilotMinimapCorner);
+  const minimapSize = useUiStore((s) => s.pilotMinimapSize);
+  const cameraDisplay = useUiStore((s) => s.pilotCameraDisplay);
   const keepAwake = useUiStore((s) => s.pilotKeepAwake);
   const setKeepAwake = useUiStore((s) => s.setPilotKeepAwake);
   const isSplit = pilotLayout === 'split' && Boolean(mapData);
+  const isMinimap = pilotLayout === 'minimap' && Boolean(mapData);
+
+  // Camera/layout settings popover anchor.
+  const [displayCfgAnchor, setDisplayCfgAnchor] = useState<HTMLElement | null>(null);
 
   // Keep the display awake while driving (opt-out via the cluster toggle), and
   // let a physical gamepad's left stick drive teleop alongside the touch
@@ -128,6 +140,18 @@ export default function PilotPage() {
   const cycleMapMode = useCallback(() => {
     setMapMode((m) => MAP_MODE_ORDER[(MAP_MODE_ORDER.indexOf(m) + 1) % MAP_MODE_ORDER.length]);
   }, []);
+
+  // Cycle the three layouts: overlay → split → minimap → overlay.
+  const cycleLayout = useCallback(() => {
+    const order: PilotLayout[] = ['overlay', 'split', 'minimap'];
+    setPilotLayout(order[(order.indexOf(pilotLayout) + 1) % order.length]);
+  }, [pilotLayout, setPilotLayout]);
+
+  // Tap on the minimap expands the map to a full, solid overlay.
+  const expandMinimap = useCallback(() => {
+    setPilotLayout('overlay');
+    setMapMode('solid');
+  }, [setPilotLayout]);
 
   const triggerEmergency = useCallback(() => {
     const {mowers, selected} = useMowersStore.getState();
@@ -222,25 +246,45 @@ export default function PilotPage() {
   const hasCamera = cam != null && cam.source !== 'none';
   const camLive = cam?.state === 'live';
 
-  // In split layout the map is always shown solid; only overlay uses the
-  // hidden/overlay/solid cycle. Derive both halves' visibility from that.
-  const mapVisible = isSplit || mapMode !== 'hidden';
-  const mapOpacityValue = !isSplit && mapMode === 'overlay' ? mapOpacity : 1;
+  // In split/minimap layouts the map is always shown solid; only overlay uses
+  // the hidden/overlay/solid cycle. Derive visibility from that.
+  const mapVisible = isSplit || isMinimap || mapMode !== 'hidden';
+  const mapOpacityValue = !isSplit && !isMinimap && mapMode === 'overlay' ? mapOpacity : 1;
+
+  // Minimap pixel width per size preset; height follows a 4:3 ratio.
+  const MINIMAP_WIDTH = {sm: 120, md: 170, lg: 230} as const;
+  const minimapW = MINIMAP_WIDTH[minimapSize];
+  // Inset the minimap from the chosen corner, clearing the docked sensor bar at
+  // the top and respecting device safe-area insets on the sides.
+  const minimapInset = (() => {
+    const side = 12;
+    const topGap = 8 + dockTop;
+    const botGap = 8 + dockBottom;
+    const vertical = minimapCorner.startsWith('top')
+      ? {top: `calc(${topGap}px)`}
+      : {bottom: `calc(${botGap}px)`};
+    const horizontal = minimapCorner.endsWith('left')
+      ? {left: `calc(${side}px + env(safe-area-inset-left))`}
+      : {right: `calc(${side}px + env(safe-area-inset-right))`};
+    return {...vertical, ...horizontal};
+  })();
 
   // Geometry for the camera and map boxes. In overlay layout both fill the
-  // whole box (inset:0); in split layout each takes a half, ordered by the
-  // swap flag (default: camera on top, map below).
+  // whole box (inset:0); in split layout each takes a half (ordered by the swap
+  // flag); in minimap layout the camera fills and the map is a small corner box.
   const fullInset = {top: 0, bottom: 0, left: 0, right: 0};
   const cameraBox = isSplit
     ? splitSwapped
       ? {top: '50%', bottom: 0, left: 0, right: 0}
       : {top: 0, height: '50%', left: 0, right: 0}
     : fullInset;
-  const mapBox = isSplit
-    ? splitSwapped
-      ? {top: 0, height: '50%', left: 0, right: 0}
-      : {top: '50%', bottom: 0, left: 0, right: 0}
-    : fullInset;
+  const mapBox = isMinimap
+    ? {...minimapInset, width: minimapW, height: Math.round((minimapW * 3) / 4)}
+    : isSplit
+      ? splitSwapped
+        ? {top: 0, height: '50%', left: 0, right: 0}
+        : {top: '50%', bottom: 0, left: 0, right: 0}
+      : fullInset;
 
   return (
     // Fill the AppShell <main> content area rather than the whole viewport, so
@@ -264,11 +308,11 @@ export default function PilotPage() {
         touchAction: 'none',
       }}
     >
-      {/* Layer 0 — camera backdrop (or placeholder when none configured). In
-          split layout it occupies one half; objectFit follows the layout so
-          the picture is never cropped in split but stays full-bleed in overlay. */}
-      <Box sx={{position: 'absolute', ...cameraBox, overflow: 'hidden'}}>
-        <CameraStream objectFit={isSplit ? 'contain' : 'cover'} onStatus={setCam} />
+      {/* Layer 0 — camera backdrop (or placeholder when none configured). It
+          occupies one half in split layout and fills the box otherwise; the
+          fit/orientation come from the user's camera-display config. */}
+      <Box sx={{position: 'absolute', ...cameraBox, overflow: 'hidden', transition: 'top 0.2s, height 0.2s, bottom 0.2s'}}>
+        <CameraStream display={cameraDisplay} onStatus={setCam} />
         {(!cam || cam.source === 'none') && (
           <Box
             sx={{
@@ -321,17 +365,26 @@ export default function PilotPage() {
           the container in the tree — maplibre keeps valid dimensions and its
           tiles stay warm. In overlay layout it spans the whole box (translucent
           in overlay mode, still interactive — the joystick layer above captures
-          its own pointers); in split layout it takes one half, solid. The box
-          geometry transitions so toggling layout/swap animates; MowerMap's
-          ResizeObserver calls map.resize() as the box changes size. */}
+          its own pointers); in split layout it takes one half, solid; in minimap
+          layout it's a small, framed corner box. The box geometry transitions so
+          toggling layout/swap/corner animates; MowerMap's ResizeObserver calls
+          map.resize() as the box changes size. In minimap mode it sits below the
+          teleop layer so it never covers the joystick/cluster. */}
       {mapData && (
         <Box
           sx={{
             position: 'absolute',
             ...mapBox,
+            zIndex: isMinimap ? MAP_OVERLAY_PANEL : undefined,
             opacity: mapVisible ? mapOpacityValue : 0,
-            pointerEvents: mapVisible ? 'auto' : 'none',
-            transition: 'opacity 0.2s, top 0.2s, height 0.2s, bottom 0.2s',
+            // The minimap is display-only (tap-to-expand handles interaction);
+            // otherwise the map stays pannable when visible.
+            pointerEvents: !mapVisible || isMinimap ? 'none' : 'auto',
+            borderRadius: isMinimap ? 2 : 0,
+            border: isMinimap ? '1px solid rgba(255,255,255,0.6)' : 'none',
+            boxShadow: isMinimap ? '0 4px 16px rgba(0,0,0,0.5)' : 'none',
+            overflow: 'hidden',
+            transition: 'opacity 0.2s, top 0.2s, bottom 0.2s, left 0.2s, right 0.2s, width 0.2s, height 0.2s',
           }}
         >
           <MowerMap
@@ -341,9 +394,44 @@ export default function PilotPage() {
             sx={{
               width: '100%',
               height: '100%',
-              backgroundColor: !isSplit && mapMode === 'overlay' ? 'transparent' : 'black',
+              backgroundColor: !isSplit && !isMinimap && mapMode === 'overlay' ? 'transparent' : 'black',
             }}
           />
+          {/* Tap-to-expand layer for the minimap — re-enables pointer events on
+              top of the display-only map and expands it to a solid overlay. */}
+          {isMinimap && (
+            <Box
+              role="button"
+              aria-label="Expand map"
+              onClick={expandMinimap}
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'flex-end',
+                p: 0.5,
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  color: '#fff',
+                  bgcolor: 'rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(4px)',
+                }}
+              >
+                <ExpandMapIcon sx={{fontSize: 16}} />
+              </Box>
+            </Box>
+          )}
         </Box>
       )}
 
@@ -366,38 +454,60 @@ export default function PilotPage() {
           flexDirection: 'column',
           gap: 1,
           alignItems: 'flex-end',
+          // Stay scrollable on short landscape screens so the growing button
+          // column is never clipped; hide the scrollbar to keep the glass look.
+          maxHeight: `calc(100% - ${16 + dockTop + dockBottom}px)`,
+          overflowY: 'auto',
+          scrollbarWidth: 'none',
+          '&::-webkit-scrollbar': {display: 'none'},
         }}
       >
-        {/* Layout toggle: overlay (translucent map over camera) ↔ split
-            (camera/map halves). Disabled with no map to lay out. */}
+        {/* Layout cycle: overlay (translucent map) → split (halves) → minimap
+            (corner). Icon reflects the current layout. Disabled with no map. */}
         <OverlayIconButton
-          title={isSplit ? 'Overlay layout' : 'Split layout (camera / map)'}
-          active={isSplit}
+          title={
+            isMinimap
+              ? 'Layout: minimap (tap for overlay)'
+              : isSplit
+                ? 'Layout: split (tap for minimap)'
+                : 'Layout: overlay (tap for split)'
+          }
+          active={isSplit || isMinimap}
           disabled={!mapData}
-          onClick={() => setPilotLayout(isSplit ? 'overlay' : 'split')}
+          onClick={cycleLayout}
         >
-          <VerticalSplitIcon />
+          {isMinimap ? <PictureInPictureIcon /> : isSplit ? <VerticalSplitIcon /> : <LayersIcon />}
         </OverlayIconButton>
-        {/* In split layout: swap which half is on top. Otherwise: the original
-            hidden → overlay → solid map-visibility cycle. */}
+        {/* Split: swap which half is on top. Overlay: the hidden → overlay →
+            solid map-visibility cycle. Minimap: no secondary control here (use
+            the corner picker in the display settings). */}
         {isSplit ? (
           <OverlayIconButton title="Swap halves (camera ↔ map)" onClick={() => setSplitSwapped(!splitSwapped)}>
             <SwapVertIcon />
           </OverlayIconButton>
         ) : (
-          <OverlayIconButton
-            title={
-              mapMode === 'hidden' ? 'Show map (overlay)' : mapMode === 'overlay' ? 'Show map (solid)' : 'Hide map'
-            }
-            onClick={cycleMapMode}
-          >
-            {mapMode === 'solid' ? <LayersClearIcon /> : <LayersIcon />}
-          </OverlayIconButton>
+          !isMinimap && (
+            <OverlayIconButton
+              title={
+                mapMode === 'hidden' ? 'Show map (overlay)' : mapMode === 'overlay' ? 'Show map (solid)' : 'Hide map'
+              }
+              onClick={cycleMapMode}
+            >
+              {mapMode === 'solid' ? <LayersClearIcon /> : <LayersIcon />}
+            </OverlayIconButton>
+          )
         )}
+        <OverlayIconButton
+          title="Camera & layout settings"
+          active={Boolean(displayCfgAnchor)}
+          onClick={(e) => setDisplayCfgAnchor(e.currentTarget)}
+        >
+          <AspectRatioIcon />
+        </OverlayIconButton>
         <OverlayIconButton title="Sensor bar settings" onClick={(e) => setSensorCfgAnchor(e.currentTarget)}>
           <TuneIcon />
         </OverlayIconButton>
-        {!isSplit && mapMode === 'overlay' && (
+        {!isSplit && !isMinimap && mapMode === 'overlay' && (
           <OverlayIconButton
             title="Adjust map transparency"
             active={showOpacity}
@@ -472,12 +582,16 @@ export default function PilotPage() {
       </Box>
 
       {/* Camera stats HUD — opt-in, mirrors the /drive footer metrics. Useful
-          both as eye-candy and to diagnose a stall (fps/bitrate drop to 0). */}
+          both as eye-candy and to diagnose a stall (fps/bitrate drop to 0).
+          Shifts below a top-left minimap so the two don't overlap. */}
       {hasCamera && showHud && (
         <Box
           sx={{
             position: 'absolute',
-            top: `calc(8px + ${dockTop}px)`,
+            top:
+              isMinimap && minimapCorner === 'top-left'
+                ? `calc(16px + ${dockTop}px + ${Math.round((minimapW * 3) / 4)}px)`
+                : `calc(8px + ${dockTop}px)`,
             left: 'calc(12px + env(safe-area-inset-left))',
             zIndex: MAP_OVERLAY_PANEL,
             px: 1.5,
@@ -649,6 +763,15 @@ export default function PilotPage() {
         anchorEl={sensorCfgAnchor}
         open={Boolean(sensorCfgAnchor)}
         onClose={() => setSensorCfgAnchor(null)}
+      />
+
+      {/* Camera & layout settings popover (fit/anchor/rotation/mirror/zoom +
+          layout/minimap placement). */}
+      <CameraDisplayConfig
+        anchorEl={displayCfgAnchor}
+        open={Boolean(displayCfgAnchor)}
+        onClose={() => setDisplayCfgAnchor(null)}
+        hasMap={Boolean(mapData)}
       />
     </Box>
   );
