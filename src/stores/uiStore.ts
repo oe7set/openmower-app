@@ -1,6 +1,6 @@
 import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
-import {DEFAULT_PILOT_METRIC_IDS} from '@/app/pilot/sensorMetrics';
+import {DEFAULT_PILOT_METRIC_IDS} from '@/app/drive/sensorMetrics';
 import {clampZoom, DEFAULT_CAMERA_DISPLAY, type CameraDisplay} from '@/components/camera/cameraDisplay';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
