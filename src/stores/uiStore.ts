@@ -86,6 +86,8 @@ interface UiStore {
   /** Hold a screen Wake Lock while the Pilot page is open so the phone display
       doesn't sleep mid-drive. */
   pilotKeepAwake: boolean;
+  /** Collapse the Pilot page's top-right control cluster to just its toggle. */
+  pilotControlsCollapsed: boolean;
 
   // Heatmap-page overlay toggles. The three layers are independent and may be
   // combined; the grid (binned) heatmap is the default look, points and the
@@ -153,6 +155,7 @@ interface UiStore {
   /** Merge a partial patch into the camera display config (zoom is clamped). */
   setPilotCameraDisplay: (patch: Partial<CameraDisplay>) => void;
   setPilotKeepAwake: (v: boolean) => void;
+  setPilotControlsCollapsed: (v: boolean) => void;
 
   setHeatmapShowGrid: (v: boolean) => void;
   setHeatmapShowPoints: (v: boolean) => void;
@@ -243,6 +246,7 @@ export const useUiStore = create<UiStore>()(
       pilotMinimapSize: 'md',
       pilotCameraDisplay: DEFAULT_CAMERA_DISPLAY,
       pilotKeepAwake: true,
+      pilotControlsCollapsed: false,
       heatmapShowGrid: true,
       heatmapShowPoints: false,
       heatmapShowPath: false,
@@ -273,6 +277,7 @@ export const useUiStore = create<UiStore>()(
           return {pilotCameraDisplay: next};
         }),
       setPilotKeepAwake: (pilotKeepAwake) => set({pilotKeepAwake}),
+      setPilotControlsCollapsed: (pilotControlsCollapsed) => set({pilotControlsCollapsed}),
       setHeatmapShowGrid: (heatmapShowGrid) => set({heatmapShowGrid}),
       setHeatmapShowPoints: (heatmapShowPoints) => set({heatmapShowPoints}),
       setHeatmapShowPath: (heatmapShowPath) => set({heatmapShowPath}),
@@ -306,7 +311,7 @@ export const useUiStore = create<UiStore>()(
     }),
     {
       name: 'openmower-ui',
-      version: 7,
+      version: 8,
       // v0 used 'white' as the plain-background style; rename it on load.
       // v1 → v2 introduces the appearance-prefs block; v2 → v3 adds the
       // batch-2 appearance keys (accent, font scale, radius, motion, page
@@ -319,8 +324,8 @@ export const useUiStore = create<UiStore>()(
       // again no migration logic, the missing keys fall through to the factory
       // defaults. v6 → v7 adds the Pilot minimap layout + camera display prefs
       // (pilotMinimapCorner/Size, pilotCameraDisplay) — same story, missing keys
-      // fall through to the factory defaults. Missing keys fall through to the
-      // store factory's defaults.
+      // fall through to the factory defaults. v7 → v8 adds pilotControlsCollapsed
+      // — same story. Missing keys fall through to the store factory's defaults.
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version < 1 && state?.mapStyle === 'white') {

@@ -27,10 +27,13 @@ import {
   Opacity as OpacityIcon,
   PhotoCamera as PhotoCameraIcon,
   PictureInPicture as PictureInPictureIcon,
+  Route as RouteIcon,
   SportsEsports as GamepadIcon,
   Stop as StopIcon,
   SwapVert as SwapVertIcon,
   Tune as TuneIcon,
+  UnfoldLess as UnfoldLessIcon,
+  UnfoldMore as UnfoldMoreIcon,
   VerticalSplit as VerticalSplitIcon,
   Videocam as VideocamIcon,
   VideocamOff as VideocamOffIcon,
@@ -98,6 +101,11 @@ export default function PilotPage() {
   const cameraDisplay = useUiStore((s) => s.pilotCameraDisplay);
   const keepAwake = useUiStore((s) => s.pilotKeepAwake);
   const setKeepAwake = useUiStore((s) => s.setPilotKeepAwake);
+  const controlsCollapsed = useUiStore((s) => s.pilotControlsCollapsed);
+  const setControlsCollapsed = useUiStore((s) => s.setPilotControlsCollapsed);
+  // Planned-path overlay (the yellow dashed line) — shared store flag with /map.
+  const showPlannedPath = useUiStore((s) => s.showPlannedPath);
+  const setShowPlannedPath = useUiStore((s) => s.setShowPlannedPath);
   const isSplit = pilotLayout === 'split' && Boolean(mapData);
   const isMinimap = pilotLayout === 'minimap' && Boolean(mapData);
 
@@ -462,123 +470,149 @@ export default function PilotPage() {
           '&::-webkit-scrollbar': {display: 'none'},
         }}
       >
-        {/* Layout cycle: overlay (translucent map) → split (halves) → minimap
-            (corner). Icon reflects the current layout. Disabled with no map. */}
+        {/* Collapse toggle — always visible so the (now many) controls can be
+            folded away to clear the view. The emergency stop lives in its own
+            bottom-right box, so collapsing never hides a safety control. */}
         <OverlayIconButton
-          title={
-            isMinimap
-              ? 'Layout: minimap (tap for overlay)'
-              : isSplit
-                ? 'Layout: split (tap for minimap)'
-                : 'Layout: overlay (tap for split)'
-          }
-          active={isSplit || isMinimap}
-          disabled={!mapData}
-          onClick={cycleLayout}
+          title={controlsCollapsed ? 'Show controls' : 'Hide controls'}
+          active={controlsCollapsed}
+          onClick={() => setControlsCollapsed(!controlsCollapsed)}
         >
-          {isMinimap ? <PictureInPictureIcon /> : isSplit ? <VerticalSplitIcon /> : <LayersIcon />}
+          {controlsCollapsed ? <UnfoldMoreIcon /> : <UnfoldLessIcon />}
         </OverlayIconButton>
-        {/* Split: swap which half is on top. Overlay: the hidden → overlay →
-            solid map-visibility cycle. Minimap: no secondary control here (use
-            the corner picker in the display settings). */}
-        {isSplit ? (
-          <OverlayIconButton title="Swap halves (camera ↔ map)" onClick={() => setSplitSwapped(!splitSwapped)}>
-            <SwapVertIcon />
-          </OverlayIconButton>
-        ) : (
-          !isMinimap && (
+        {!controlsCollapsed && (
+          <>
+            {/* Layout cycle: overlay (translucent map) → split (halves) → minimap
+                (corner). Icon reflects the current layout. Disabled with no map. */}
             <OverlayIconButton
               title={
-                mapMode === 'hidden' ? 'Show map (overlay)' : mapMode === 'overlay' ? 'Show map (solid)' : 'Hide map'
+                isMinimap
+                  ? 'Layout: minimap (tap for overlay)'
+                  : isSplit
+                    ? 'Layout: split (tap for minimap)'
+                    : 'Layout: overlay (tap for split)'
               }
-              onClick={cycleMapMode}
+              active={isSplit || isMinimap}
+              disabled={!mapData}
+              onClick={cycleLayout}
             >
-              {mapMode === 'solid' ? <LayersClearIcon /> : <LayersIcon />}
+              {isMinimap ? <PictureInPictureIcon /> : isSplit ? <VerticalSplitIcon /> : <LayersIcon />}
             </OverlayIconButton>
-          )
-        )}
-        <OverlayIconButton
-          title="Camera & layout settings"
-          active={Boolean(displayCfgAnchor)}
-          onClick={(e) => setDisplayCfgAnchor(e.currentTarget)}
-        >
-          <AspectRatioIcon />
-        </OverlayIconButton>
-        <OverlayIconButton title="Sensor bar settings" onClick={(e) => setSensorCfgAnchor(e.currentTarget)}>
-          <TuneIcon />
-        </OverlayIconButton>
-        {!isSplit && !isMinimap && mapMode === 'overlay' && (
-          <OverlayIconButton
-            title="Adjust map transparency"
-            active={showOpacity}
-            onClick={() => setShowOpacity((v) => !v)}
-          >
-            <OpacityIcon />
-          </OverlayIconButton>
-        )}
-        {hasCamera && (
-          <OverlayIconButton title="Camera stats overlay" active={showHud} onClick={() => setShowHud((v) => !v)}>
-            <InsightsIcon />
-          </OverlayIconButton>
-        )}
-        {hasCamera && (
-          <OverlayIconButton title="Snapshot (download frame)" onClick={takeSnapshot} disabled={!camLive}>
-            <PhotoCameraIcon />
-          </OverlayIconButton>
-        )}
-        <OverlayIconButton
-          title={keepAwake ? 'Keep display awake: on' : 'Keep display awake: off'}
-          active={keepAwake}
-          onClick={() => setKeepAwake(!keepAwake)}
-        >
-          {keepAwake ? <LightbulbIcon /> : <LightbulbOutlinedIcon />}
-        </OverlayIconButton>
-        <OverlayIconButton title="Emergency stop" color="error" onClick={triggerEmergency} disabled={!hasMower}>
-          <StopIcon />
-        </OverlayIconButton>
-        {gamepadConnected && (
-          <Tooltip title="Gamepad connected — left stick drives" placement="left">
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                color: theme.palette.success.main,
-                bgcolor: 'rgba(0,0,0,0.4)',
-                backdropFilter: 'blur(4px)',
-              }}
+            {/* Split: swap which half is on top. Overlay: the hidden → overlay →
+                solid map-visibility cycle. Minimap: no secondary control here (use
+                the corner picker in the display settings). */}
+            {isSplit ? (
+              <OverlayIconButton title="Swap halves (camera ↔ map)" onClick={() => setSplitSwapped(!splitSwapped)}>
+                <SwapVertIcon />
+              </OverlayIconButton>
+            ) : (
+              !isMinimap && (
+                <OverlayIconButton
+                  title={
+                    mapMode === 'hidden'
+                      ? 'Show map (overlay)'
+                      : mapMode === 'overlay'
+                        ? 'Show map (solid)'
+                        : 'Hide map'
+                  }
+                  onClick={cycleMapMode}
+                >
+                  {mapMode === 'solid' ? <LayersClearIcon /> : <LayersIcon />}
+                </OverlayIconButton>
+              )
+            )}
+            {/* Planned-path overlay toggle — the yellow dashed route the mower
+                will drive. Shares the store flag with the /map page. */}
+            {mapData && (
+              <OverlayIconButton
+                title={showPlannedPath ? 'Hide planned path' : 'Show planned path'}
+                active={showPlannedPath}
+                onClick={() => setShowPlannedPath(!showPlannedPath)}
+              >
+                <RouteIcon />
+              </OverlayIconButton>
+            )}
+            <OverlayIconButton
+              title="Camera & layout settings"
+              active={Boolean(displayCfgAnchor)}
+              onClick={(e) => setDisplayCfgAnchor(e.currentTarget)}
             >
-              <GamepadIcon />
-            </Box>
-          </Tooltip>
+              <AspectRatioIcon />
+            </OverlayIconButton>
+            <OverlayIconButton title="Sensor bar settings" onClick={(e) => setSensorCfgAnchor(e.currentTarget)}>
+              <TuneIcon />
+            </OverlayIconButton>
+            {!isSplit && !isMinimap && mapMode === 'overlay' && (
+              <OverlayIconButton
+                title="Adjust map transparency"
+                active={showOpacity}
+                onClick={() => setShowOpacity((v) => !v)}
+              >
+                <OpacityIcon />
+              </OverlayIconButton>
+            )}
+            {hasCamera && (
+              <OverlayIconButton title="Camera stats overlay" active={showHud} onClick={() => setShowHud((v) => !v)}>
+                <InsightsIcon />
+              </OverlayIconButton>
+            )}
+            {hasCamera && (
+              <OverlayIconButton title="Snapshot (download frame)" onClick={takeSnapshot} disabled={!camLive}>
+                <PhotoCameraIcon />
+              </OverlayIconButton>
+            )}
+            <OverlayIconButton
+              title={keepAwake ? 'Keep display awake: on' : 'Keep display awake: off'}
+              active={keepAwake}
+              onClick={() => setKeepAwake(!keepAwake)}
+            >
+              {keepAwake ? <LightbulbIcon /> : <LightbulbOutlinedIcon />}
+            </OverlayIconButton>
+            {gamepadConnected && (
+              <Tooltip title="Gamepad connected — left stick drives" placement="left">
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    color: theme.palette.success.main,
+                    bgcolor: 'rgba(0,0,0,0.4)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                >
+                  <GamepadIcon />
+                </Box>
+              </Tooltip>
+            )}
+            <Tooltip
+              title={camLive ? 'Camera live' : camStalled ? 'Connected — no video signal' : 'Camera offline'}
+              placement="left"
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  color: camLive
+                    ? theme.palette.success.main
+                    : camStalled
+                      ? theme.palette.warning.main
+                      : 'rgba(255,255,255,0.5)',
+                  bgcolor: 'rgba(0,0,0,0.4)',
+                  backdropFilter: 'blur(4px)',
+                }}
+              >
+                {camLive ? <VideocamIcon /> : <VideocamOffIcon />}
+              </Box>
+            </Tooltip>
+          </>
         )}
-        <Tooltip
-          title={camLive ? 'Camera live' : camStalled ? 'Connected — no video signal' : 'Camera offline'}
-          placement="left"
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              color: camLive
-                ? theme.palette.success.main
-                : camStalled
-                  ? theme.palette.warning.main
-                  : 'rgba(255,255,255,0.5)',
-              bgcolor: 'rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(4px)',
-            }}
-          >
-            {camLive ? <VideocamIcon /> : <VideocamOffIcon />}
-          </Box>
-        </Tooltip>
       </Box>
 
       {/* Camera stats HUD — opt-in, mirrors the /drive footer metrics. Useful
@@ -705,9 +739,12 @@ export default function PilotPage() {
         </Box>
       </Box>
 
-      {/* Mow-motor toggle (bottom-right, mirroring the speed slider bottom-left
-          so the joystick stays centred between them). Disabled outside
-          AREA_RECORDING / during emergency — the backend drops it otherwise. */}
+      {/* Emergency stop + mow-motor toggle (bottom-right, mirroring the speed
+          slider bottom-left so the joystick stays centred between them). The
+          emergency button sits above the mow button and stays visible
+          regardless of the control cluster's collapsed state, so the safety
+          stop is always one tap away. Mow is disabled outside AREA_RECORDING /
+          during emergency — the backend drops it otherwise. */}
       <Box
         sx={{
           position: 'absolute',
@@ -720,6 +757,12 @@ export default function PilotPage() {
           gap: 0.5,
         }}
       >
+        <OverlayIconButton title="Emergency stop" color="error" onClick={triggerEmergency} disabled={!hasMower}>
+          <StopIcon />
+        </OverlayIconButton>
+        <Typography variant="caption" sx={{color: 'rgba(255,255,255,0.85)', fontSize: 10, mb: 0.5}}>
+          Stop
+        </Typography>
         <OverlayIconButton
           title={
             manualMowing

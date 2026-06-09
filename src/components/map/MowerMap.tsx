@@ -268,7 +268,9 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
   // polygon with @turf/boolean-point-in-polygon.
   const handleMapClick = useCallback(
     (e: {lngLat: {lng: number; lat: number}}) => {
-      if (editMode) return;
+      // Edit mode owns clicks; embedded mode (e.g. the Pilot page) is
+      // display-only, so taps must not pop up area details there.
+      if (editMode || embedded) return;
       const pt: Feature<import('geojson').Point> = {
         type: 'Feature',
         properties: {},
@@ -285,7 +287,7 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
         setPopupAreaId(null);
       });
     },
-    [editMode, areas],
+    [editMode, embedded, areas],
   );
 
   // maplibre only listens for *window* resizes, not changes to its own
@@ -518,7 +520,7 @@ export function MowerMap({mapData, saveMapToMower, sx, embedded = false}: MowerM
         {currentState === 'AREA_RECORDING' && !editMode && <RecordingPanel />}
         <DialogOutlet />
       </RMap>
-      {!editMode && popupArea && (
+      {!editMode && !embedded && popupArea && (
         <AreaPopup area={popupArea} mowingIndex={popupMowingIndex} onClose={() => setPopupAreaId(null)} />
       )}
     </Box>
