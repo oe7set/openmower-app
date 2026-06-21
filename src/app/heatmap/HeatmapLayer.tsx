@@ -4,7 +4,7 @@ import {type MapData} from '@/stores/schemas';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import type {Feature, FeatureCollection, Point} from 'geojson';
 import {RLayer, RSource} from 'maplibre-react-components';
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 import {colorFor, METRICS, resolveRange, type MetricId, type Sample} from './metrics';
 
 interface HeatmapLayerProps {
@@ -22,7 +22,7 @@ interface HeatmapLayerProps {
 // We do *not* mount the MapLibre 'mousemove'-driven tooltip in here — the
 // parent page owns the popover so it can show the full sample detail. We just
 // publish hovered-index back via onHover and let the page render.
-export default function HeatmapLayer({id, samples, metricId, datum, onHover}: HeatmapLayerProps) {
+function HeatmapLayer({id, samples, metricId, datum, onHover}: HeatmapLayerProps) {
   const metric = METRICS[metricId];
 
   const featureCollection = useMemo<FeatureCollection<Point>>(() => {
@@ -85,3 +85,7 @@ export default function HeatmapLayer({id, samples, metricId, datum, onHover}: He
     </>
   );
 }
+
+// Memoised: a parent re-render (e.g. on hover) must not recompute the GeoJSON
+// over all samples unless the props that actually feed it change.
+export default memo(HeatmapLayer);

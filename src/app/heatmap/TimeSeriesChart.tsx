@@ -43,6 +43,9 @@ export default function TimeSeriesChart({
   useEffect(() => {
     onCursorRef.current = onCursor;
   }, [onCursor]);
+  // Set true while we move the cursor programmatically (from the map) so the
+  // resulting setCursor hook doesn't echo back through onCursor.
+  const programmaticCursorRef = useRef(false);
 
   const available = useMemo(() => availableSignals(samples), [samples]);
   // Stable, ordered list of the active signal keys actually present in the data.
@@ -77,7 +80,11 @@ export default function TimeSeriesChart({
       activeKeys,
       width,
       plotH,
-      (idx) => onCursorRef.current?.(idx),
+      (idx) => {
+        // Swallow the echo from a programmatic (map-driven) cursor move.
+        if (programmaticCursorRef.current) return;
+        onCursorRef.current?.(idx);
+      },
       chartTheme,
     );
     uplotRef.current = new uPlot(opts, data, el);
@@ -102,15 +109,18 @@ export default function TimeSeriesChart({
   }, [height]);
 
   // Map → chart: move the chart cursor to the given sample index (or clear it).
+  // Guarded so the resulting setCursor hook doesn't echo back via onCursor.
   useEffect(() => {
     const u = uplotRef.current;
     if (!u) return;
+    programmaticCursorRef.current = true;
     if (cursorIdx == null) {
       u.setCursor({left: -10, top: -10});
-      return;
+    } else {
+      const left = u.valToPos(cursorIdx, 'x');
+      u.setCursor({left, top: u.bbox.height / 2 / (window.devicePixelRatio || 1)});
     }
-    const left = u.valToPos(cursorIdx, 'x');
-    u.setCursor({left, top: u.bbox.height / 2 / (window.devicePixelRatio || 1)});
+    programmaticCursorRef.current = false;
   }, [cursorIdx]);
 
   return (

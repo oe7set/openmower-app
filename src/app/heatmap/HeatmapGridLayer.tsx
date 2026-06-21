@@ -4,7 +4,7 @@ import {type MapData} from '@/stores/schemas';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import type {Feature, FeatureCollection, Polygon} from 'geojson';
 import {RLayer, RSource} from 'maplibre-react-components';
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 import {colorFor, METRICS, resolveRange, type MetricId, type Sample} from './metrics';
 
 export interface GridCellInfo {
@@ -36,7 +36,7 @@ interface HeatmapGridLayerProps {
 // layer), so it only recomputes when the data, metric, datum or cell size
 // changes. Metrics that need a rolling window (IMU jerk, composite) are
 // precomputed over the raw ordered samples first, then averaged per cell.
-export default function HeatmapGridLayer({id, samples, metricId, datum, cellSize, onHover}: HeatmapGridLayerProps) {
+function HeatmapGridLayer({id, samples, metricId, datum, cellSize, onHover}: HeatmapGridLayerProps) {
   const metric = METRICS[metricId];
 
   const featureCollection = useMemo<FeatureCollection<Polygon>>(() => {
@@ -127,3 +127,6 @@ export default function HeatmapGridLayer({id, samples, metricId, datum, cellSize
     </>
   );
 }
+
+// Memoised so a parent hover re-render doesn't re-bin all samples into the grid.
+export default memo(HeatmapGridLayer);

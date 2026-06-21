@@ -4,7 +4,7 @@ import {type MapData} from '@/stores/schemas';
 import {datumToRelative, pointsToAbsolute} from '@/utils/coordinates';
 import type {Feature, FeatureCollection, LineString} from 'geojson';
 import {RLayer, RSource} from 'maplibre-react-components';
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 
 interface PathLayerProps {
   id: string;
@@ -19,15 +19,7 @@ interface PathLayerProps {
   dashed?: boolean;
 }
 
-export default function PathLayer({
-  id,
-  paths,
-  datum,
-  color,
-  width = 3,
-  opacity = 0.85,
-  dashed = false,
-}: PathLayerProps) {
+function PathLayer({id, paths, datum, color, width = 3, opacity = 0.85, dashed = false}: PathLayerProps) {
   const featureCollection = useMemo<FeatureCollection>(() => {
     if (paths.length === 0) return {type: 'FeatureCollection', features: []};
     const utmDatum = datumToRelative([datum.long, datum.lat]);
@@ -64,3 +56,8 @@ export default function PathLayer({
     </>
   );
 }
+
+// Memoised so a parent hover re-render doesn't re-project the polyline points
+// unless the path data actually changed. Callers must pass a stable `paths`
+// reference (e.g. from useMemo) for this to take effect.
+export default memo(PathLayer);

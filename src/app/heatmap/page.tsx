@@ -153,6 +153,38 @@ export default function HeatmapPage() {
   const [chartCursorIdx, setChartCursorIdx] = useState<number | null>(null);
   const mapRef = useRef<MlMap>(null);
 
+  // Hover plumbing. Map↔chart hover fires at ~60 Hz; committing every event to
+  // React state re-renders the whole (heavy) page each time. Instead we stash
+  // the latest values in refs and flush at most once per animation frame, and
+  // only when something actually changed. `cursorEchoRef` swallows the callback
+  // a programmatic setCursor would bounce back, so one hover = one commit.
+  const rafRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<{idx: number | null; sessionId: string | null} | null>(null);
+
+  const flushHover = useCallback(() => {
+    rafRef.current = null;
+    const pending = pendingHoverRef.current;
+    if (!pending) return;
+    pendingHoverRef.current = null;
+    const {idx, sessionId} = pending;
+    setChartCursorIdx((prev) => (prev === idx ? prev : idx));
+    if (sessionId) {
+      setHoverIdxBySession((prev) => (prev[sessionId] === idx ? prev : {...prev, [sessionId]: idx}));
+    }
+  }, []);
+
+  const scheduleHover = useCallback(
+    (idx: number | null, sessionId: string | null) => {
+      pendingHoverRef.current = {idx, sessionId};
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(flushHover);
+    },
+    [flushHover],
+  );
+
+  useEffect(() => () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
   const refreshSessions = useCallback(async () => {
     if (!rpc) return;
     setLoadingSessions(true);
@@ -333,6 +365,22 @@ export default function HeatmapPage() {
     }
   }, [selected, chartSessionId]);
 
+  // Stable per-session hover handlers so the memoised HeatmapLayer doesn't see a
+  // new onHover identity on every page render. Map → chart cursor is routed
+  // through the rAF-coalesced scheduler.
+  const hoverHandlersRef = useRef<Map<string, (idx: number | null) => void>>(new Map());
+  const getHoverHandler = useCallback(
+    (id: string) => {
+      let h = hoverHandlersRef.current.get(id);
+      if (!h) {
+        h = (idx: number | null) => scheduleHover(idx, id);
+        hoverHandlersRef.current.set(id, h);
+      }
+      return h;
+    },
+    [scheduleHover],
+  );
+
   const toggleChartSignal = useCallback((key: string) => {
     setChartSignals((prev) => {
       const next = new Set(prev);
@@ -363,6 +411,69 @@ export default function HeatmapPage() {
     const [lng, lat] = pointToAbsolute({x: s.x, y: s.y}, utm);
     return featureCollection<Point>([point([lng, lat])]);
   }, [chartCursorIdx, chartSessionId, datum, samplesVersion]);
+
+  // Pre-build the overlay element lists so a hover-only re-render doesn't
+  // recreate them (and thus doesn't churn the memoised layer children). They
+  // only change when the data, selection, metric or datum changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const selectedIds = useMemo(() => Array.from(selected), [selected, samplesVersion]);
+
+  const gridLayers = useMemo(() => {
+    if (!showGrid) return null;
+    return selectedIds.map((id) => {
+      const arr = samplesRef.current!.get(id);
+      if (!arr || arr.length === 0) return null;
+      return (
+        <HeatmapGridLayer
+          key={`grid-${id}-${metric}`}
+          id={`heatmap-grid-${id}`}
+          samples={arr}
+          metricId={metric}
+          datum={datum}
+          cellSize={GRID_CELL_SIZE_M}
+          onHover={setHoverCell}
+        />
+      );
+    });
+  }, [showGrid, selectedIds, metric, datum]);
+
+  const pathLayers = useMemo(() => {
+    if (!showPath) return null;
+    return selectedIds.map((id) => {
+      const arr = samplesRef.current!.get(id);
+      if (!arr || arr.length === 0) return null;
+      const segments = buildPathSegments(arr);
+      return segments.map((seg, i) => (
+        <PathLayer
+          key={`path-${id}-${i}`}
+          id={`heatmap-path-${id}-${i}`}
+          paths={[seg.points]}
+          datum={datum}
+          color={seg.kind === 'paused' ? '#f59e0b' : '#2563eb'}
+          width={2}
+          opacity={0.9}
+        />
+      ));
+    });
+  }, [showPath, selectedIds, datum]);
+
+  const pointLayers = useMemo(() => {
+    if (!showPoints) return null;
+    return selectedIds.map((id) => {
+      const arr = samplesRef.current!.get(id);
+      if (!arr || arr.length === 0) return null;
+      return (
+        <HeatmapLayer
+          key={`${id}-${metric}`}
+          id={`heatmap-${id}`}
+          samples={arr}
+          metricId={metric}
+          datum={datum}
+          onHover={getHoverHandler(id)}
+        />
+      );
+    });
+  }, [showPoints, selectedIds, metric, datum, getHoverHandler]);
 
   if (!hasCap) {
     return (
@@ -510,10 +621,7 @@ export default function HeatmapPage() {
           samples={chartSamples}
           selectedSignals={chartSignals}
           onToggleSignal={toggleChartSignal}
-          onCursor={(idx) => {
-            setChartCursorIdx(idx);
-            if (chartSessionId) setHoverIdxBySession((prev) => ({...prev, [chartSessionId]: idx}));
-          }}
+          onCursor={(idx) => scheduleHover(idx, chartSessionId)}
           cursorIdx={chartCursorIdx}
           height={isMobile ? 320 : 260}
         />
@@ -713,59 +821,11 @@ export default function HeatmapPage() {
                 <ControlButton position="top-right" icon={FocusIcon} title="Fit to bounds" onClick={fitToBounds} />
                 <MapStyleSelector />
                 {/* Overlays stack bottom→top: grid fill, then the driven path,
-                    then points (kept topmost so per-sample hover wins). */}
-                {showGrid &&
-                  Array.from(selected).map((id) => {
-                    const arr = samplesRef.current!.get(id);
-                    if (!arr || arr.length === 0) return null;
-                    return (
-                      <HeatmapGridLayer
-                        key={`grid-${id}-${metric}`}
-                        id={`heatmap-grid-${id}`}
-                        samples={arr}
-                        metricId={metric}
-                        datum={datum}
-                        cellSize={GRID_CELL_SIZE_M}
-                        onHover={setHoverCell}
-                      />
-                    );
-                  })}
-                {showPath &&
-                  Array.from(selected).map((id) => {
-                    const arr = samplesRef.current!.get(id);
-                    if (!arr || arr.length === 0) return null;
-                    const segments = buildPathSegments(arr);
-                    return segments.map((seg, i) => (
-                      <PathLayer
-                        key={`path-${id}-${i}`}
-                        id={`heatmap-path-${id}-${i}`}
-                        paths={[seg.points]}
-                        datum={datum}
-                        color={seg.kind === 'paused' ? '#f59e0b' : '#2563eb'}
-                        width={2}
-                        opacity={0.9}
-                      />
-                    ));
-                  })}
-                {showPoints &&
-                  Array.from(selected).map((id) => {
-                    const arr = samplesRef.current!.get(id);
-                    if (!arr || arr.length === 0) return null;
-                    return (
-                      <HeatmapLayer
-                        key={`${id}-${metric}`}
-                        id={`heatmap-${id}`}
-                        samples={arr}
-                        metricId={metric}
-                        datum={datum}
-                        onHover={(idx) => {
-                          setHoverIdxBySession((prev) => ({...prev, [id]: idx}));
-                          // Map → chart: drive the chart cursor for the charted session.
-                          if (id === chartSessionId) setChartCursorIdx(idx);
-                        }}
-                      />
-                    );
-                  })}
+                    then points (kept topmost so per-sample hover wins). Built in
+                    memoised lists so hover-only re-renders don't recreate them. */}
+                {gridLayers}
+                {pathLayers}
+                {pointLayers}
                 {/* Chart → map highlight marker (magenta halo + ring + core),
                     kept last so it sits above every overlay. */}
                 <RSource id="chart-highlight" type="geojson" data={highlightFc} />
