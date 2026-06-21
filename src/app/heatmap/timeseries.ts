@@ -152,6 +152,9 @@ export function buildChartOpts(
       x: true,
       y: false,
       points: {show: true},
+      // Disable uPlot's built-in drag-to-box-zoom so a drag pans instead (see
+      // attachDragPan). Zoom is via the wheel; double-click resets.
+      drag: {x: false, y: false, setScale: false},
       bind: {
         mouseleave: (_u, _t, handler) => (e) => {
           onCursor(null);
@@ -161,7 +164,7 @@ export function buildChartOpts(
     },
     hooks: {
       setCursor: [(u) => onCursor(u.cursor.idx ?? null)],
-      ready: [attachWheelZoom],
+      ready: [attachWheelZoom, attachDragPan],
     },
   };
 }
@@ -201,4 +204,61 @@ function attachWheelZoom(u: uPlot) {
     },
     {passive: false},
   );
+}
+
+// Drag-to-pan on the x-axis: while zoomed in, press and drag horizontally to
+// scroll the visible window. Panning is clamped to the data range and keeps the
+// current zoom width. A click without movement is left to uPlot (cursor only).
+function attachDragPan(u: uPlot) {
+  let startX = 0;
+  let startMin = 0;
+  let startMax = 0;
+
+  const onMove = (e: MouseEvent) => {
+    const rect = u.over.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const range = startMax - startMin;
+    // Pixels dragged → value delta; drag right moves the window left (earlier).
+    const dxVal = ((e.clientX - startX) / rect.width) * range;
+    const xs = u.data[0];
+    const dataMin = xs.length ? (xs[0] as number) : 0;
+    const dataMax = xs.length ? (xs[xs.length - 1] as number) : 1;
+    let newMin = startMin - dxVal;
+    let newMax = startMax - dxVal;
+    if (newMin < dataMin) {
+      newMax += dataMin - newMin;
+      newMin = dataMin;
+    }
+    if (newMax > dataMax) {
+      newMin -= newMax - dataMax;
+      newMax = dataMax;
+    }
+    u.setScale('x', {min: newMin, max: newMax});
+  };
+
+  const onUp = () => {
+    u.over.style.cursor = '';
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  u.over.addEventListener('mousedown', (e: MouseEvent) => {
+    if (e.button !== 0) return;
+    const {min, max} = u.scales.x;
+    if (min == null || max == null) return;
+    const xs = u.data[0];
+    const dataMin = xs.length ? (xs[0] as number) : 0;
+    const dataMax = xs.length ? (xs[xs.length - 1] as number) : 1;
+    // Only pan when actually zoomed in (otherwise the full range is shown).
+    if (min <= dataMin && max >= dataMax) return;
+    startX = e.clientX;
+    startMin = min;
+    startMax = max;
+    u.over.style.cursor = 'grabbing';
+    e.preventDefault();
+    // Track on window so a drag leaving the plot still pans and ends cleanly;
+    // removed on mouseup so listeners never accumulate across chart rebuilds.
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
 }
