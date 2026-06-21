@@ -8,11 +8,13 @@ import {featureCollection, point} from '@turf/helpers';
 import type {Feature, Point} from 'geojson';
 import type {Map as MlMap} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import {RFullscreenControl, RMap} from 'maplibre-react-components';
+import {RFullscreenControl, RLayer, RMap, RSource} from 'maplibre-react-components';
 import {
   Refresh as RefreshIcon,
   ListAlt as ListAltIcon,
   Download as DownloadIcon,
+  ShowChart as ShowChartIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import {
   Alert,
@@ -41,7 +43,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {FocusIcon} from 'lucide-react';
 import {datumToRelative, pointToAbsolute} from '@/utils/coordinates';
 import ControlButton from '@/components/map/ControlButton';
@@ -53,6 +55,7 @@ import HeatmapLayer from './HeatmapLayer';
 import HeatmapGridLayer, {type GridCellInfo} from './HeatmapGridLayer';
 import {METRICS, sampleState, type MetricId, type Sample} from './metrics';
 import {rampSwatch} from './colors';
+import TimeSeriesChart from './TimeSeriesChart';
 import {buildPathSegments} from './path';
 import {buildSessionZip, downloadBytes, sessionFileStem, type SessionMeta} from './export';
 
@@ -138,6 +141,16 @@ export default function HeatmapPage() {
   // single sample.
   const [hoverCell, setHoverCell] = useState<GridCellInfo | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  // Time-series chart panel (desktop) / dialog (mobile) state.
+  const [chartOpen, setChartOpen] = useState(false);
+  // Session feeding the chart — independent of the heatmap overlay selection.
+  const [chartSessionId, setChartSessionId] = useState<string | null>(null);
+  // Signals plotted in the chart, independent of the heatmap metric.
+  const [chartSignals, setChartSignals] = useState<Set<string>>(
+    () => new Set(['om_mow_motor_current', 'om_mow_motor_rpm', 'om_mow_esc_temp']),
+  );
+  // Sample index the chart cursor points at, mirrored onto the map highlight.
+  const [chartCursorIdx, setChartCursorIdx] = useState<number | null>(null);
   const mapRef = useRef<MlMap>(null);
 
   const refreshSessions = useCallback(async () => {
@@ -310,6 +323,47 @@ export default function HeatmapPage() {
     fitToBounds();
   }, [fitToBounds, samplesVersion]);
 
+  // Default the chart's session to the first selected one, and clear it when its
+  // session is deselected.
+  useEffect(() => {
+    if (chartSessionId && !selected.has(chartSessionId)) {
+      setChartSessionId(selected.size > 0 ? (selected.values().next().value ?? null) : null);
+    } else if (!chartSessionId && selected.size > 0) {
+      setChartSessionId(selected.values().next().value ?? null);
+    }
+  }, [selected, chartSessionId]);
+
+  const toggleChartSignal = useCallback((key: string) => {
+    setChartSignals((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Samples feeding the chart (the chart session, falling back to nothing).
+  // samplesVersion gates the memo so it refreshes as pages stream in.
+  const chartSamples = useMemo<Sample[]>(() => {
+    void samplesVersion;
+    if (!chartSessionId) return [];
+    return samplesRef.current!.get(chartSessionId) ?? [];
+  }, [chartSessionId, samplesVersion]);
+
+  // Absolute lng/lat of the chart-cursor sample, for the map highlight marker.
+  // samplesVersion in deps so the marker tracks streamed-in pages too.
+  const highlightFc = useMemo(() => {
+    void samplesVersion;
+    const empty = featureCollection<Point>([]);
+    if (chartCursorIdx == null || !chartSessionId) return empty;
+    const arr = samplesRef.current!.get(chartSessionId);
+    const s = arr?.[chartCursorIdx];
+    if (!s) return empty;
+    const utm = datumToRelative([datum.long, datum.lat]);
+    const [lng, lat] = pointToAbsolute({x: s.x, y: s.y}, utm);
+    return featureCollection<Point>([point([lng, lat])]);
+  }, [chartCursorIdx, chartSessionId, datum, samplesVersion]);
+
   if (!hasCap) {
     return (
       <Page>
@@ -430,6 +484,41 @@ export default function HeatmapPage() {
         })}
       </List>
     </>
+  );
+
+  // Chart body shared by the desktop panel and the mobile dialog. Includes a
+  // session picker when more than one session is selected.
+  const selectedList = sessions?.filter((s) => selected.has(s.id)) ?? [];
+  const chartBody = (
+    <Box sx={{display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%', gap: 1}}>
+      {selectedList.length > 1 && (
+        <Select
+          size="small"
+          value={chartSessionId ?? ''}
+          onChange={(e) => setChartSessionId(e.target.value || null)}
+          sx={{fontSize: '0.8rem', alignSelf: 'flex-start', minWidth: 220}}
+        >
+          {selectedList.map((s) => (
+            <MenuItem key={s.id} value={s.id} sx={{fontSize: '0.8rem'}}>
+              {new Date(s.start_ts * 1000).toLocaleString()}
+            </MenuItem>
+          ))}
+        </Select>
+      )}
+      <Box sx={{flex: 1, minHeight: 0}}>
+        <TimeSeriesChart
+          samples={chartSamples}
+          selectedSignals={chartSignals}
+          onToggleSignal={toggleChartSignal}
+          onCursor={(idx) => {
+            setChartCursorIdx(idx);
+            if (chartSessionId) setHoverIdxBySession((prev) => ({...prev, [chartSessionId]: idx}));
+          }}
+          cursorIdx={chartCursorIdx}
+          height={isMobile ? 320 : 260}
+        />
+      </Box>
+    </Box>
   );
 
   return (
@@ -556,6 +645,16 @@ export default function HeatmapPage() {
                     Path
                   </ToggleButton>
                 </ToggleButtonGroup>
+                <Button
+                  size="small"
+                  variant={chartOpen ? 'contained' : 'outlined'}
+                  startIcon={<ShowChartIcon fontSize="small" />}
+                  disabled={selected.size === 0}
+                  onClick={() => setChartOpen((o) => !o)}
+                  sx={{textTransform: 'none', fontSize: '0.72rem', py: 0.25, ml: 0.5}}
+                >
+                  Chart
+                </Button>
               </Box>
               <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5, mt: 1.5, flexWrap: 'wrap'}}>
                 <Typography variant="caption" color="text.secondary">
@@ -659,10 +758,45 @@ export default function HeatmapPage() {
                         samples={arr}
                         metricId={metric}
                         datum={datum}
-                        onHover={(idx) => setHoverIdxBySession((prev) => ({...prev, [id]: idx}))}
+                        onHover={(idx) => {
+                          setHoverIdxBySession((prev) => ({...prev, [id]: idx}));
+                          // Map → chart: drive the chart cursor for the charted session.
+                          if (id === chartSessionId) setChartCursorIdx(idx);
+                        }}
                       />
                     );
                   })}
+                {/* Chart → map highlight marker (magenta halo + ring + core),
+                    kept last so it sits above every overlay. */}
+                <RSource id="chart-highlight" type="geojson" data={highlightFc} />
+                <RLayer
+                  id="chart-highlight-halo"
+                  type="circle"
+                  source="chart-highlight"
+                  paint={{'circle-radius': 13, 'circle-color': '#ff00ff', 'circle-opacity': 0.25}}
+                />
+                <RLayer
+                  id="chart-highlight-ring"
+                  type="circle"
+                  source="chart-highlight"
+                  paint={{
+                    'circle-radius': 8,
+                    'circle-color': 'rgba(0,0,0,0)',
+                    'circle-stroke-color': '#ff00ff',
+                    'circle-stroke-width': 3,
+                  }}
+                />
+                <RLayer
+                  id="chart-highlight-core"
+                  type="circle"
+                  source="chart-highlight"
+                  paint={{
+                    'circle-radius': 3,
+                    'circle-color': '#ffffff',
+                    'circle-stroke-color': '#ff00ff',
+                    'circle-stroke-width': 1,
+                  }}
+                />
               </RMap>
               {/* Per-sample tooltip (points overlay) — first hovered session
                   wins. On mobile it sits at the bottom so it doesn't collide
@@ -780,9 +914,35 @@ export default function HeatmapPage() {
                 </Box>
               )}
             </Box>
+            {/* Desktop: collapsible chart panel below the map, inside the card. */}
+            {!isMobile && chartOpen && selected.size > 0 && (
+              <>
+                <Divider />
+                <Box sx={{p: 1.5, height: 320, flexShrink: 0}}>{chartBody}</Box>
+              </>
+            )}
           </Card>
         </Box>
       </PageContent>
+
+      {/* Mobile: chart in a fullscreen dialog. */}
+      {isMobile && (
+        <Dialog open={chartOpen} onClose={() => setChartOpen(false)} fullScreen>
+          <DialogTitle sx={{display: 'flex', alignItems: 'center', gap: 1, pr: 1}}>
+            <Box sx={{flex: 1, minWidth: 0}}>
+              <Typography variant="h6" component="div" noWrap>
+                Signals
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setChartOpen(false)} aria-label="close" edge="end">
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, pb: 2}}>
+            {chartBody}
+          </DialogContent>
+        </Dialog>
+      )}
     </Page>
   );
 }
