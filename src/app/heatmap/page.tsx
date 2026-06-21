@@ -8,7 +8,7 @@ import {featureCollection, point} from '@turf/helpers';
 import type {Feature, Point} from 'geojson';
 import type {Map as MlMap} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import {RFullscreenControl, RLayer, RMap, RSource} from 'maplibre-react-components';
+import {RFullscreenControl, RMap} from 'maplibre-react-components';
 import {
   Refresh as RefreshIcon,
   ListAlt as ListAltIcon,
@@ -53,9 +53,11 @@ import PathLayer from '@/components/map/layers/PathLayer';
 import {useUiStore} from '@/stores/uiStore';
 import HeatmapLayer from './HeatmapLayer';
 import HeatmapGridLayer, {type GridCellInfo} from './HeatmapGridLayer';
-import {METRICS, sampleState, type MetricId, type Sample} from './metrics';
+import {METRICS, type MetricId, type Sample} from './metrics';
 import {rampSwatch} from './colors';
-import TimeSeriesChart from './TimeSeriesChart';
+import TimeSeriesChart, {type TimeSeriesChartHandle} from './TimeSeriesChart';
+import HoverMarker, {type HoverMarkerHandle} from './HoverMarker';
+import HoverInfo, {type HoverInfoHandle} from './HoverInfo';
 import {buildPathSegments} from './path';
 import {buildSessionZip, downloadBytes, sessionFileStem, type SessionMeta} from './export';
 
@@ -136,10 +138,6 @@ export default function HeatmapPage() {
   // Sessions currently being exported (paginated load + zip), for the spinner.
   const [exporting, setExporting] = useState<Set<string>>(new Set());
   const [exportError, setExportError] = useState<string | null>(null);
-  const [hoverIdxBySession, setHoverIdxBySession] = useState<Record<string, number | null>>({});
-  // Hovered grid cell (grid overlay only); shows aggregate stats instead of a
-  // single sample.
-  const [hoverCell, setHoverCell] = useState<GridCellInfo | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   // Time-series chart panel (desktop) / dialog (mobile) state.
   const [chartOpen, setChartOpen] = useState(false);
@@ -149,29 +147,45 @@ export default function HeatmapPage() {
   const [chartSignals, setChartSignals] = useState<Set<string>>(
     () => new Set(['om_mow_motor_current', 'om_mow_motor_rpm', 'om_mow_esc_temp']),
   );
-  // Sample index the chart cursor points at, mirrored onto the map highlight.
-  const [chartCursorIdx, setChartCursorIdx] = useState<number | null>(null);
   const mapRef = useRef<MlMap>(null);
+  const [mapInstance, setMapInstance] = useState<MlMap | null>(null);
 
-  // Hover plumbing. Map↔chart hover fires at ~60 Hz; committing every event to
-  // React state re-renders the whole (heavy) page each time. Instead we stash
-  // the latest values in refs and flush at most once per animation frame, and
-  // only when something actually changed. `cursorEchoRef` swallows the callback
-  // a programmatic setCursor would bounce back, so one hover = one commit.
+  // Hover plumbing is fully imperative: map↔chart hover fires at ~60 Hz, and
+  // routing it through React state would re-render the heavy page and force a GL
+  // repaint of the highlight on every frame. Instead we drive a DOM marker
+  // (HoverMarker), the tooltip (HoverInfo) and the chart cursor (TimeSeriesChart)
+  // through refs, coalesced to one update per animation frame. No page state.
+  const markerRef = useRef<HoverMarkerHandle>(null);
+  const infoRef = useRef<HoverInfoHandle>(null);
+  const chartRef = useRef<TimeSeriesChartHandle>(null);
+  // chartSessionId mirrored into a ref so the stable hover handlers can read the
+  // current value without being re-created.
+  const chartSessionIdRef = useRef<string | null>(null);
+  chartSessionIdRef.current = chartSessionId;
+
   const rafRef = useRef<number | null>(null);
   const pendingHoverRef = useRef<{idx: number | null; sessionId: string | null} | null>(null);
 
+  // Apply the latest pending hover imperatively: position the marker, update the
+  // tooltip, and (if it's the charted session) move the chart cursor.
   const flushHover = useCallback(() => {
     rafRef.current = null;
     const pending = pendingHoverRef.current;
     if (!pending) return;
     pendingHoverRef.current = null;
     const {idx, sessionId} = pending;
-    setChartCursorIdx((prev) => (prev === idx ? prev : idx));
-    if (sessionId) {
-      setHoverIdxBySession((prev) => (prev[sessionId] === idx ? prev : {...prev, [sessionId]: idx}));
+    const arr = sessionId ? samplesRef.current!.get(sessionId) : undefined;
+    const s = idx != null && arr ? arr[idx] : undefined;
+    if (s) {
+      const utm = datumToRelative([datum.long, datum.lat]);
+      markerRef.current?.setPosition(pointToAbsolute({x: s.x, y: s.y}, utm));
+      infoRef.current?.showSample(s);
+    } else {
+      markerRef.current?.setPosition(null);
+      infoRef.current?.clear();
     }
-  }, []);
+    if (sessionId === chartSessionIdRef.current) chartRef.current?.setCursorIndex(idx);
+  }, [datum]);
 
   const scheduleHover = useCallback(
     (idx: number | null, sessionId: string | null) => {
@@ -180,6 +194,12 @@ export default function HeatmapPage() {
     },
     [flushHover],
   );
+
+  // Grid-cell hover → aggregate-stats tooltip (imperative, no page state).
+  const handleCellHover = useCallback((info: GridCellInfo | null) => {
+    if (info) infoRef.current?.showCell(info);
+    else infoRef.current?.clear();
+  }, []);
 
   useEffect(() => () => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -398,20 +418,6 @@ export default function HeatmapPage() {
     return samplesRef.current!.get(chartSessionId) ?? [];
   }, [chartSessionId, samplesVersion]);
 
-  // Absolute lng/lat of the chart-cursor sample, for the map highlight marker.
-  // samplesVersion in deps so the marker tracks streamed-in pages too.
-  const highlightFc = useMemo(() => {
-    void samplesVersion;
-    const empty = featureCollection<Point>([]);
-    if (chartCursorIdx == null || !chartSessionId) return empty;
-    const arr = samplesRef.current!.get(chartSessionId);
-    const s = arr?.[chartCursorIdx];
-    if (!s) return empty;
-    const utm = datumToRelative([datum.long, datum.lat]);
-    const [lng, lat] = pointToAbsolute({x: s.x, y: s.y}, utm);
-    return featureCollection<Point>([point([lng, lat])]);
-  }, [chartCursorIdx, chartSessionId, datum, samplesVersion]);
-
   // Pre-build the overlay element lists so a hover-only re-render doesn't
   // recreate them (and thus doesn't churn the memoised layer children). They
   // only change when the data, selection, metric or datum changes.
@@ -431,11 +437,11 @@ export default function HeatmapPage() {
           metricId={metric}
           datum={datum}
           cellSize={GRID_CELL_SIZE_M}
-          onHover={setHoverCell}
+          onHover={handleCellHover}
         />
       );
     });
-  }, [showGrid, selectedIds, metric, datum]);
+  }, [showGrid, selectedIds, metric, datum, handleCellHover]);
 
   const pathLayers = useMemo(() => {
     if (!showPath) return null;
@@ -618,11 +624,11 @@ export default function HeatmapPage() {
       )}
       <Box sx={{flex: 1, minHeight: 0}}>
         <TimeSeriesChart
+          ref={chartRef}
           samples={chartSamples}
           selectedSignals={chartSignals}
           onToggleSignal={toggleChartSignal}
           onCursor={(idx) => scheduleHover(idx, chartSessionId)}
-          cursorIdx={chartCursorIdx}
           height={isMobile ? 320 : 260}
         />
       </Box>
@@ -804,6 +810,9 @@ export default function HeatmapPage() {
                 dragRotate={false}
                 onLoad={(e) => {
                   e.target.touchZoomRotate.disableRotation();
+                  // Expose the map instance so the imperative HoverMarker can
+                  // attach a DOM marker to it.
+                  setMapInstance(e.target);
                   // Drop focus from MapLibre's fullscreen ctrl button when the
                   // container resizes — otherwise the focused button stays
                   // inside an aria-hidden ancestor while MUI/MapLibre swap
@@ -826,130 +835,18 @@ export default function HeatmapPage() {
                 {gridLayers}
                 {pathLayers}
                 {pointLayers}
-                {/* Chart → map highlight marker (magenta halo + ring + core),
-                    kept last so it sits above every overlay. */}
-                <RSource id="chart-highlight" type="geojson" data={highlightFc} />
-                <RLayer
-                  id="chart-highlight-halo"
-                  type="circle"
-                  source="chart-highlight"
-                  paint={{'circle-radius': 13, 'circle-color': '#ff00ff', 'circle-opacity': 0.25}}
-                />
-                <RLayer
-                  id="chart-highlight-ring"
-                  type="circle"
-                  source="chart-highlight"
-                  paint={{
-                    'circle-radius': 8,
-                    'circle-color': 'rgba(0,0,0,0)',
-                    'circle-stroke-color': '#ff00ff',
-                    'circle-stroke-width': 3,
-                  }}
-                />
-                <RLayer
-                  id="chart-highlight-core"
-                  type="circle"
-                  source="chart-highlight"
-                  paint={{
-                    'circle-radius': 3,
-                    'circle-color': '#ffffff',
-                    'circle-stroke-color': '#ff00ff',
-                    'circle-stroke-width': 1,
-                  }}
-                />
               </RMap>
-              {/* Per-sample tooltip (points overlay) — first hovered session
-                  wins. On mobile it sits at the bottom so it doesn't collide
-                  with the map controls (top-right). */}
-              {showPoints &&
-                Object.entries(hoverIdxBySession).map(([id, idx]) => {
-                  if (idx === null || idx === undefined) return null;
-                  const arr = samplesRef.current!.get(id);
-                  const s = arr?.[idx];
-                  if (!s) return null;
-                  return (
-                    <Box
-                      key={id}
-                      sx={{
-                        position: 'absolute',
-                        ...(isMobile
-                          ? {bottom: 12, left: 12, right: 12, maxWidth: 'unset'}
-                          : {top: 12, right: 12, maxWidth: 280}),
-                        bgcolor: theme.palette.background.paper,
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 1,
-                        px: 1.5,
-                        py: 1,
-                        fontSize: '0.78rem',
-                        fontFamily: 'var(--font-dm-mono), monospace',
-                        pointerEvents: 'none',
-                        zIndex: 5,
-                      }}
-                    >
-                      <div>{new Date(s.ts * 1000).toLocaleTimeString()}</div>
-                      <div style={{opacity: 0.7}}>
-                        x={s.x.toFixed(2)}, y={s.y.toFixed(2)}
-                      </div>
-                      {sampleState(s) !== undefined && <div>State: {sampleState(s)}</div>}
-                      {s.gps_fix_type !== undefined && (
-                        <div>
-                          GPS fix: {s.gps_fix_type} · sats {s.gps_satellite_count ?? '—'} · PDOP{' '}
-                          {s.gps_pdop?.toFixed(2) ?? '—'}
-                        </div>
-                      )}
-                      {s.gps_accuracy !== undefined && <div>GPS acc: ±{s.gps_accuracy.toFixed(2)}m</div>}
-                      {(s.wifi_dbm !== undefined || s.wifi_q !== undefined) && (
-                        <div>
-                          WLAN: {s.wifi_dbm ?? '—'}dBm ({((s.wifi_q ?? 0) * 100).toFixed(0)}%)
-                        </div>
-                      )}
-                      {(s.qw !== undefined || s.pitch !== undefined) && (
-                        <div>
-                          Orient: roll {radToDeg(s.roll)}° · pitch {radToDeg(s.pitch)}° · yaw {radToDeg(s.yaw)}°
-                        </div>
-                      )}
-                      {s.om_mow_motor_current !== undefined && (
-                        <div>Mow current: {s.om_mow_motor_current.toFixed(2)}A</div>
-                      )}
-                      {s.om_mow_motor_rpm !== undefined && <div>Mow RPM: {s.om_mow_motor_rpm.toFixed(0)}</div>}
-                      {s.om_mow_motor_temp !== undefined && <div>Mow temp: {s.om_mow_motor_temp.toFixed(1)}°C</div>}
-                      {s.om_mow_esc_temp !== undefined && <div>Mow ESC: {s.om_mow_esc_temp.toFixed(1)}°C</div>}
-                      {(s.om_left_esc_temp !== undefined || s.om_right_esc_temp !== undefined) && (
-                        <div>
-                          ESC: L {s.om_left_esc_temp?.toFixed(1) ?? '—'}°C · R {s.om_right_esc_temp?.toFixed(1) ?? '—'}
-                          °C
-                        </div>
-                      )}
-                      {s.om_v_battery !== undefined && <div>Battery: {s.om_v_battery.toFixed(2)}V</div>}
-                    </Box>
-                  );
-                })}
-              {/* Grid-cell tooltip (grid overlay): aggregate stats for the
-                  hovered cell rather than a single sample. */}
-              {showGrid && hoverCell && (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    ...(isMobile
-                      ? {bottom: 12, left: 12, right: 12, maxWidth: 'unset'}
-                      : {top: 12, right: 12, maxWidth: 280}),
-                    bgcolor: theme.palette.background.paper,
-                    border: `1px solid ${theme.palette.divider}`,
-                    borderRadius: 1,
-                    px: 1.5,
-                    py: 1,
-                    fontSize: '0.78rem',
-                    fontFamily: 'var(--font-dm-mono), monospace',
-                    pointerEvents: 'none',
-                    zIndex: 5,
-                  }}
-                >
-                  <div>{def.label}</div>
-                  <div style={{opacity: 0.7}}>
-                    Ø {hoverCell.mean.toFixed(2)} · {hoverCell.count} pts / {GRID_CELL_SIZE_M}m cell
-                  </div>
-                </Box>
-              )}
+              {/* Imperative DOM marker for the hover highlight — moves via a CSS
+                  transform with no GL repaint. */}
+              <HoverMarker ref={markerRef} map={mapInstance} />
+              {/* Isolated tooltip overlay — owns its own state so a hover only
+                  re-renders this small component, not the whole page. */}
+              <HoverInfo
+                ref={infoRef}
+                isMobile={isMobile}
+                metricLabel={def.label}
+                cellSizeM={GRID_CELL_SIZE_M}
+              />
               {selected.size === 0 && (
                 <Box
                   sx={{
@@ -1005,12 +902,6 @@ export default function HeatmapPage() {
       )}
     </Page>
   );
-}
-
-// Radians → whole degrees for the orientation tooltip; em-dash when absent.
-function radToDeg(rad: number | undefined): string {
-  if (rad === undefined || !Number.isFinite(rad)) return '—';
-  return Math.round((rad * 180) / Math.PI).toString();
 }
 
 function formatDuration(seconds: number): string {

@@ -1,11 +1,16 @@
 'use client';
 
 import {Box, Chip, Stack, Typography, useTheme} from '@mui/material';
-import {useEffect, useMemo, useRef} from 'react';
+import {forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef} from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import {SIGNALS, availableSignals, buildChartData, buildChartOpts, type ChartTheme} from './timeseries';
 import type {Sample} from './metrics';
+
+export interface TimeSeriesChartHandle {
+  /** Move the chart cursor to a sample index (or clear it) — driven by the map. */
+  setCursorIndex: (idx: number | null) => void;
+}
 
 interface TimeSeriesChartProps {
   samples: Sample[];
@@ -14,8 +19,6 @@ interface TimeSeriesChartProps {
   onToggleSignal: (key: string) => void;
   /** Reports the hovered sample index back for map sync (null on leave). */
   onCursor?: (idx: number | null) => void;
-  /** Drives the chart cursor from the map (map → chart hover). */
-  cursorIdx?: number | null;
   /** Plot height in px (excluding the signal chips + legend). */
   height?: number;
 }
@@ -25,15 +28,13 @@ interface TimeSeriesChartProps {
 const LEGEND_RESERVE = 36;
 
 // React wrapper around uPlot for the heatmap time-series panel. Twin of the
-// standalone viewer's chart wiring (openmower-heatmap-viewer/src/main.ts).
-export default function TimeSeriesChart({
-  samples,
-  selectedSignals,
-  onToggleSignal,
-  onCursor,
-  cursorIdx,
-  height = 260,
-}: TimeSeriesChartProps) {
+// standalone viewer's chart wiring (openmower-heatmap-viewer/src/main.ts). The
+// map→chart cursor is driven imperatively via the ref (setCursorIndex) so a
+// map hover never re-renders this component or the heatmap page.
+const TimeSeriesChart = forwardRef<TimeSeriesChartHandle, TimeSeriesChartProps>(function TimeSeriesChart(
+  {samples, selectedSignals, onToggleSignal, onCursor, height = 260},
+  ref,
+) {
   const theme = useTheme();
   const plotRef = useRef<HTMLDivElement>(null);
   const uplotRef = useRef<uPlot | null>(null);
@@ -108,20 +109,22 @@ export default function TimeSeriesChart({
     return () => ro.disconnect();
   }, [height]);
 
-  // Map → chart: move the chart cursor to the given sample index (or clear it).
+  // Map → chart: move the chart cursor imperatively (no prop/state, no re-render).
   // Guarded so the resulting setCursor hook doesn't echo back via onCursor.
-  useEffect(() => {
-    const u = uplotRef.current;
-    if (!u) return;
-    programmaticCursorRef.current = true;
-    if (cursorIdx == null) {
-      u.setCursor({left: -10, top: -10});
-    } else {
-      const left = u.valToPos(cursorIdx, 'x');
-      u.setCursor({left, top: u.bbox.height / 2 / (window.devicePixelRatio || 1)});
-    }
-    programmaticCursorRef.current = false;
-  }, [cursorIdx]);
+  useImperativeHandle(ref, () => ({
+    setCursorIndex: (idx: number | null) => {
+      const u = uplotRef.current;
+      if (!u) return;
+      programmaticCursorRef.current = true;
+      if (idx == null) {
+        u.setCursor({left: -10, top: -10});
+      } else {
+        const left = u.valToPos(idx, 'x');
+        u.setCursor({left, top: u.bbox.height / 2 / (window.devicePixelRatio || 1)});
+      }
+      programmaticCursorRef.current = false;
+    },
+  }));
 
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%'}}>
@@ -170,4 +173,8 @@ export default function TimeSeriesChart({
       </Box>
     </Box>
   );
-}
+});
+
+// Memoised: with the map→chart cursor now imperative, this component's props no
+// longer change on hover, so a page render won't re-render it.
+export default memo(TimeSeriesChart);
