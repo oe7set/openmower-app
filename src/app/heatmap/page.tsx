@@ -9,7 +9,11 @@ import type {Feature, Point} from 'geojson';
 import type {Map as MlMap} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
-import {Refresh as RefreshIcon, ListAlt as ListAltIcon} from '@mui/icons-material';
+import {
+  Refresh as RefreshIcon,
+  ListAlt as ListAltIcon,
+  Download as DownloadIcon,
+} from '@mui/icons-material';
 import {
   Alert,
   Badge,
@@ -50,15 +54,7 @@ import HeatmapGridLayer, {type GridCellInfo} from './HeatmapGridLayer';
 import {METRICS, sampleState, type MetricId, type Sample} from './metrics';
 import {rampSwatch} from './colors';
 import {buildPathSegments} from './path';
-
-interface SessionMeta {
-  id: string;
-  start_ts: number;
-  end_ts: number;
-  sample_count: number;
-  file_size_bytes?: number;
-  duration_s?: number;
-}
+import {buildSessionZip, downloadBytes, sessionFileStem, type SessionMeta} from './export';
 
 const ALL_METRICS: MetricId[] = [
   'gps',
@@ -122,6 +118,10 @@ export default function HeatmapPage() {
   // Sample cache so re-toggling a session doesn't refetch.
   const samplesRef = useRef<Map<string, Sample[]> | null>(null);
   if (samplesRef.current === null) samplesRef.current = new Map<string, Sample[]>();
+  // In-flight loads keyed by session id, so a display toggle and an export of
+  // the same session share one paginated fetch instead of racing the broker.
+  const inFlightRef = useRef<Map<string, Promise<Sample[]>> | null>(null);
+  if (inFlightRef.current === null) inFlightRef.current = new Map<string, Promise<Sample[]>>();
   // Bump on every successful fetchSamples so the fit-bounds effect re-runs
   // even though samplesRef itself is mutated in place.
   const [samplesVersion, setSamplesVersion] = useState(0);
@@ -130,6 +130,9 @@ export default function HeatmapPage() {
   const [loadedCounts, setLoadedCounts] = useState<Record<string, number>>({});
   const [sampleErrors, setSampleErrors] = useState<Record<string, string>>({});
   const [metric, setMetric] = useState<MetricId>('gps');
+  // Sessions currently being exported (paginated load + zip), for the spinner.
+  const [exporting, setExporting] = useState<Set<string>>(new Set());
+  const [exportError, setExportError] = useState<string | null>(null);
   const [hoverIdxBySession, setHoverIdxBySession] = useState<Record<string, number | null>>({});
   // Hovered grid cell (grid overlay only); shows aggregate stats instead of a
   // single sample.
@@ -161,56 +164,105 @@ export default function HeatmapPage() {
     if (hasCap && rpc && sessions === null && !loadingSessions) refreshSessions();
   }, [hasCap, rpc, sessions, loadingSessions, refreshSessions]);
 
-  const fetchSamples = useCallback(
-    async (id: string) => {
-      if (!rpc) return;
-      if (samplesRef.current!.has(id)) return;
-      setLoadingSamples((prev) => new Set(prev).add(id));
-      setLoadedCounts((prev) => ({...prev, [id]: 0}));
-      setSampleErrors((prev) => {
-        if (!(id in prev)) return prev;
-        const next = {...prev};
-        delete next[id];
-        return next;
-      });
-      // Accumulate full-resolution samples one small page at a time, rendering
-      // each page as it lands so the map fills in progressively. Each response
-      // stays small (~PAGE_SIZE points), so there is no oversized single
-      // payload and no timeout even for multi-hour sessions.
-      const acc: Sample[] = [];
-      try {
-        for (let offset = 0; offset < MAX_TOTAL_POINTS; offset += PAGE_SIZE) {
-          const res = (await rpc.telemetry.get_session(
-            {id, stride: SAMPLE_STRIDE, offset, limit: PAGE_SIZE},
-            SESSION_FETCH_TIMEOUT_MS,
-          )) as unknown as {samples?: Sample[]; truncated?: boolean};
-          const page = res?.samples ?? [];
-          acc.push(...page);
-          // Publish the growing array each page for incremental rendering.
-          samplesRef.current!.set(id, acc.slice());
-          setSamplesVersion((v) => v + 1);
-          setLoadedCounts((prev) => ({...prev, [id]: acc.length}));
-          // Done when the server reports no more or returned a short final page.
-          if (!res?.truncated || page.length < PAGE_SIZE) break;
-        }
-      } catch (e) {
-        // Keep whatever pages already loaded so the user still sees partial data.
-        if (acc.length === 0) samplesRef.current!.delete(id);
-        setSampleErrors((prev) => ({...prev, [id]: (e as Error).message || 'Unknown error'}));
-      } finally {
-        setLoadingSamples((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-        setLoadedCounts((prev) => {
+  // Load every sample of a session at full resolution, paginating in small
+  // pages so no single payload is oversized and the cache fills progressively.
+  // The result is cached in samplesRef and the in-flight promise is shared, so
+  // toggling a session for display and exporting it never double-fetch. Throws
+  // on a hard failure with no pages loaded; otherwise resolves with whatever
+  // pages did land (and records the error for the retry UI).
+  const loadAllSamples = useCallback(
+    (id: string): Promise<Sample[]> => {
+      const cached = samplesRef.current!.get(id);
+      if (cached) return Promise.resolve(cached);
+      const pending = inFlightRef.current!.get(id);
+      if (pending) return pending;
+      if (!rpc) return Promise.reject(new Error('Not connected'));
+
+      const run = (async (): Promise<Sample[]> => {
+        setLoadingSamples((prev) => new Set(prev).add(id));
+        setLoadedCounts((prev) => ({...prev, [id]: 0}));
+        setSampleErrors((prev) => {
+          if (!(id in prev)) return prev;
           const next = {...prev};
           delete next[id];
           return next;
         });
-      }
+        // Accumulate full-resolution samples one small page at a time, rendering
+        // each page as it lands so the map fills in progressively. Each response
+        // stays small (~PAGE_SIZE points), so there is no oversized single
+        // payload and no timeout even for multi-hour sessions.
+        const acc: Sample[] = [];
+        try {
+          for (let offset = 0; offset < MAX_TOTAL_POINTS; offset += PAGE_SIZE) {
+            const res = (await rpc.telemetry.get_session(
+              {id, stride: SAMPLE_STRIDE, offset, limit: PAGE_SIZE},
+              SESSION_FETCH_TIMEOUT_MS,
+            )) as unknown as {samples?: Sample[]; truncated?: boolean};
+            const page = res?.samples ?? [];
+            acc.push(...page);
+            // Publish the growing array each page for incremental rendering.
+            samplesRef.current!.set(id, acc.slice());
+            setSamplesVersion((v) => v + 1);
+            setLoadedCounts((prev) => ({...prev, [id]: acc.length}));
+            // Done when the server reports no more or returned a short final page.
+            if (!res?.truncated || page.length < PAGE_SIZE) break;
+          }
+          return acc;
+        } catch (e) {
+          // Keep whatever pages already loaded so the user still sees partial data.
+          if (acc.length === 0) samplesRef.current!.delete(id);
+          setSampleErrors((prev) => ({...prev, [id]: (e as Error).message || 'Unknown error'}));
+          if (acc.length === 0) throw e;
+          return acc;
+        } finally {
+          inFlightRef.current!.delete(id);
+          setLoadingSamples((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          setLoadedCounts((prev) => {
+            const next = {...prev};
+            delete next[id];
+            return next;
+          });
+        }
+      })();
+      inFlightRef.current!.set(id, run);
+      return run;
     },
     [rpc],
+  );
+
+  // Fire-and-forget load for display; swallow the rejection (the error is
+  // surfaced via sampleErrors / the retry button in the list).
+  const fetchSamples = useCallback(
+    (id: string) => {
+      void loadAllSamples(id).catch(() => {});
+    },
+    [loadAllSamples],
+  );
+
+  const exportSession = useCallback(
+    async (meta: SessionMeta) => {
+      setExportError(null);
+      setExporting((prev) => new Set(prev).add(meta.id));
+      try {
+        const samples = await loadAllSamples(meta.id);
+        if (samples.length === 0) throw new Error('No samples to export');
+        const zip = buildSessionZip(meta, datum, samples, ALL_METRICS, Math.floor(Date.now() / 1000));
+        downloadBytes(`${sessionFileStem(meta)}.omheat.zip`, zip, 'application/zip');
+      } catch (e) {
+        setExportError((e as Error).message || 'Export failed');
+      } finally {
+        setExporting((prev) => {
+          const next = new Set(prev);
+          next.delete(meta.id);
+          return next;
+        });
+      }
+    },
+    [loadAllSamples, datum],
   );
 
   const toggleSession = (id: string) => {
@@ -304,6 +356,11 @@ export default function HeatmapPage() {
           Could not load sessions: {sessionsError}
         </Alert>
       )}
+      {exportError && (
+        <Alert severity="error" variant="outlined" sx={{mb: 1}} onClose={() => setExportError(null)}>
+          Export failed: {exportError}
+        </Alert>
+      )}
       {sessions === null && loadingSessions && (
         <Box sx={{display: 'flex', justifyContent: 'center', py: 3}}>
           <CircularProgress size={20} />
@@ -318,7 +375,15 @@ export default function HeatmapPage() {
         {sessions?.map((s) => {
           const err = sampleErrors[s.id];
           const loaded = loadedCounts[s.id];
-          const secondary = loadingSamples.has(s.id) ? (
+          const isExporting = exporting.has(s.id);
+          // While exporting (which may itself be paginating samples) show the
+          // export spinner; otherwise the load spinner, retry, or the download
+          // button that triggers the export.
+          const secondary = isExporting ? (
+            <Tooltip title="Exporting…" arrow>
+              <CircularProgress size={14} />
+            </Tooltip>
+          ) : loadingSamples.has(s.id) ? (
             <Tooltip title={loaded ? `Loading… ${loaded}/${s.sample_count} pts` : 'Loading…'} arrow>
               <CircularProgress size={14} />
             </Tooltip>
@@ -335,7 +400,20 @@ export default function HeatmapPage() {
                 <RefreshIcon fontSize="small" color="error" />
               </IconButton>
             </Tooltip>
-          ) : null;
+          ) : (
+            <Tooltip title="Export session as .omheat.zip" arrow>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  exportSession(s);
+                }}
+                aria-label="Export session"
+              >
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          );
           return (
             <ListItem key={s.id} disablePadding secondaryAction={secondary}>
               <ListItemButton dense onClick={() => toggleSession(s.id)}>
