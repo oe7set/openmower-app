@@ -77,6 +77,10 @@ const ALL_METRICS: MetricId[] = [
   'mow_esc_temp',
   'esc_temp',
   'battery',
+  // Localisation-debug metrics: only populated on record_all_states sessions,
+  // otherwise render nothing. Kept last so they don't clutter normal use.
+  'heading_error',
+  'offset_error',
   'composite',
 ];
 

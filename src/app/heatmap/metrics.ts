@@ -32,6 +32,22 @@ interface KnownSample {
   ax?: number;
   ay?: number;
   az?: number;
+  // Localisation-debug fields (recorder run with record_all_states=true only).
+  // raw_gps_* is the unfiltered antenna fix; ekf_* the fused EKF state;
+  // gps_dx/dy the antenna correction vector (raw - fused). Used to diagnose
+  // antenna-offset / heading (theta) bugs. Absent on normal recordings.
+  raw_gps_x?: number;
+  raw_gps_y?: number;
+  gps_motion_heading?: number;
+  gps_vehicle_heading?: number;
+  raw_gps_acc?: number;
+  ekf_x?: number;
+  ekf_y?: number;
+  ekf_theta?: number;
+  ekf_vx?: number;
+  ekf_vr?: number;
+  gps_dx?: number;
+  gps_dy?: number;
 }
 // The numeric known fields plus an open record of per-sensor numeric values.
 // `state` (the one string field) is kept off this type so the open record
@@ -82,6 +98,8 @@ export type MetricId =
   | 'mow_esc_temp'
   | 'esc_temp'
   | 'battery'
+  | 'heading_error'
+  | 'offset_error'
   | 'composite';
 
 // GPS quality blend: fix-type weight (0..5 → 0..1) ANDed with a satellite
@@ -185,6 +203,35 @@ function tiltDeg(s: Sample): number | undefined {
 function turnRate(s: Sample): number | undefined {
   if (s.gx === undefined && s.gy === undefined && s.gz === undefined) return undefined;
   return Math.hypot(s.gx ?? 0, s.gy ?? 0, s.gz ?? 0);
+}
+
+// Wrap an angle difference into [-pi, pi].
+function wrapPi(a: number): number {
+  let x = a;
+  while (x > Math.PI) x -= 2 * Math.PI;
+  while (x < -Math.PI) x += 2 * Math.PI;
+  return x;
+}
+
+// Localisation-debug: absolute heading error (deg) between the fused EKF theta
+// and the GPS motion heading (direction of travel). A consistent non-zero value
+// is a heading bias; spikes in turns reveal theta dynamics problems. Only on
+// record_all_states sessions where the mower was actually moving.
+function headingErrorDeg(s: Sample): number | undefined {
+  if (s.ekf_theta === undefined || s.gps_motion_heading === undefined) return undefined;
+  // Only meaningful while moving — a stationary GPS motion heading is noise.
+  const speed = s.ekf_vx !== undefined ? Math.abs(s.ekf_vx) : undefined;
+  if (speed !== undefined && speed < 0.1) return undefined;
+  return Math.abs((wrapPi(s.ekf_theta - s.gps_motion_heading) * 180) / Math.PI);
+}
+
+// Localisation-debug: magnitude of the antenna correction vector (raw antenna -
+// fused centre), in metres. Should equal the physical antenna offset distance
+// and stay constant; a varying value as the robot turns means the offset is
+// being applied with a wrong frame/heading. Only on record_all_states sessions.
+function offsetErrorM(s: Sample): number | undefined {
+  if (s.gps_dx === undefined || s.gps_dy === undefined) return undefined;
+  return Math.hypot(s.gps_dx, s.gps_dy);
 }
 
 export const METRICS: Record<MetricId, MetricDef> = {
@@ -309,6 +356,24 @@ export const METRICS: Record<MetricId, MetricDef> = {
     ramp: 'rdYlGn',
     goodGreen: true,
     value: (s) => s.om_v_battery,
+  },
+  heading_error: {
+    id: 'heading_error',
+    label: 'Heading error (debug)',
+    description:
+      'Absolute angle between fused EKF heading and GPS direction of travel, in degrees. Localisation-debug sessions only. A constant offset = heading bias; spikes in turns = theta dynamics issue.',
+    ramp: 'rdYlGn',
+    goodGreen: false, // smaller = better
+    value: headingErrorDeg,
+    range: [0, 45],
+  },
+  offset_error: {
+    id: 'offset_error',
+    label: 'Antenna offset vec (debug)',
+    description:
+      'Magnitude of the antenna correction vector (raw antenna − fused centre), in metres. Localisation-debug sessions only. Should stay constant ≈ the physical offset; variation when turning means a wrong offset frame/heading.',
+    ramp: 'inferno',
+    value: offsetErrorM,
   },
   composite: {
     id: 'composite',
