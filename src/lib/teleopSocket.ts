@@ -25,7 +25,13 @@ export class TeleopSocket {
   send(vx: number, vz: number): void {
     if (this.closed) return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const payload = BSON.serialize({vx, vz});
+    // Guard against NaN/Infinity coming from a misbehaving joystick or gamepad
+    // axis: a non-finite value would either throw in BSON.serialize (silently
+    // dropping the frame) or, worse, reach the mower as garbage. Coerce to a
+    // safe stop and clamp to the documented [-1, 1] range.
+    const safeVx = Number.isFinite(vx) ? Math.max(-1, Math.min(1, vx)) : 0;
+    const safeVz = Number.isFinite(vz) ? Math.max(-1, Math.min(1, vz)) : 0;
+    const payload = BSON.serialize({vx: safeVx, vz: safeVz});
     try {
       // BSON.serialize returns a Uint8Array on browsers; the WebSocket API
       // accepts ArrayBuffer / Blob / typed-array directly.
