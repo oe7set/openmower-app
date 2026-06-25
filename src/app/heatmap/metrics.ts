@@ -48,6 +48,11 @@ interface KnownSample {
   ekf_vr?: number;
   gps_dx?: number;
   gps_dy?: number;
+  // Fused heading from the EKF pose carried in RobotState — present on every
+  // recording (unlike ekf_theta which needs the debug topic). Used as the
+  // heading source when ekf_theta is absent.
+  fused_theta?: number;
+  fused_heading?: number;
 }
 // The numeric known fields plus an open record of per-sensor numeric values.
 // `state` (the one string field) is kept off this type so the open record
@@ -213,16 +218,17 @@ function wrapPi(a: number): number {
   return x;
 }
 
-// Localisation-debug: absolute heading error (deg) between the fused EKF theta
-// and the GPS motion heading (direction of travel). A consistent non-zero value
-// is a heading bias; spikes in turns reveal theta dynamics problems. Only on
-// record_all_states sessions where the mower was actually moving.
+// Localisation-debug: absolute heading error (deg) between the fused heading
+// (ekf_theta when present, else fused_theta from RobotState) and the GPS motion
+// heading (direction of travel). A consistent non-zero value is a heading bias;
+// spikes in turns reveal theta dynamics problems. Only meaningful while moving.
 function headingErrorDeg(s: Sample): number | undefined {
-  if (s.ekf_theta === undefined || s.gps_motion_heading === undefined) return undefined;
+  const theta = s.ekf_theta ?? s.fused_theta;
+  if (theta === undefined || s.gps_motion_heading === undefined) return undefined;
   // Only meaningful while moving — a stationary GPS motion heading is noise.
   const speed = s.ekf_vx !== undefined ? Math.abs(s.ekf_vx) : undefined;
   if (speed !== undefined && speed < 0.1) return undefined;
-  return Math.abs((wrapPi(s.ekf_theta - s.gps_motion_heading) * 180) / Math.PI);
+  return Math.abs((wrapPi(theta - s.gps_motion_heading) * 180) / Math.PI);
 }
 
 // Localisation-debug: magnitude of the antenna correction vector (raw antenna -
