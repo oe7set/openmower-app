@@ -11,6 +11,9 @@ export interface SessionMeta {
   sample_count: number;
   file_size_bytes?: number;
   duration_s?: number;
+  // True for movement-gated manual-drive sessions (recorder opens these outside
+  // MOWING). Absent/false for normal mow sessions. Older recordings omit it.
+  manual?: boolean;
 }
 
 type Datum = NonNullable<MapData['datum']>;

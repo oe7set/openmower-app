@@ -595,7 +595,7 @@ export default function HeatmapPage() {
                 <Checkbox edge="start" checked={selected.has(s.id)} tabIndex={-1} disableRipple size="small" />
                 <ListItemText
                   primary={new Date(s.start_ts * 1000).toLocaleString()}
-                  secondary={`${formatDuration(s.duration_s ?? s.end_ts - s.start_ts)} · ${s.sample_count} pts`}
+                  secondary={`${formatDuration(s.duration_s ?? s.end_ts - s.start_ts)} · ${s.sample_count} pts${s.manual ? ' · manual' : ''}`}
                   primaryTypographyProps={{variant: 'body2', noWrap: true}}
                   secondaryTypographyProps={{variant: 'caption'}}
                 />
